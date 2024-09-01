@@ -1,0 +1,15 @@
+---
+# tasks file for disks
+
+- name: Validate configuration
+  ansible.builtin.assert:
+    that:
+      - disks_partitions | type_debug == 'list'
+
+- name: Create disk
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/disk.yml"
+  loop: "{{ disks_partitions }}"
+  loop_control:
+    loop_var: disks_item
+    label: disks_item.mount_path | default('invalid')
+

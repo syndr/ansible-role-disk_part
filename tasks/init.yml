@@ -1,0 +1,79 @@
+---
+# Initialize the role for the current disk
+
+- name: Load configuration data
+  ansible.builtin.set_fact:
+    disks_disk_config:
+      device: "{{ disks_item.device }}"            # Required argument
+      mount_path: "{{ disks_item.mount_path }}"    # Required argument
+      mount_type: "{{ disks_item.mount_type | default(disks_partition_defaults.mount_type) }}"
+      description: "{{ disks_item.description | default(disks_partition_defaults.description) }}"
+      systemd_before: "{{ disks_item.systemd_before | default(disks_partition_defaults.systemd_before) }}"
+      systemd_after: "{{ disks_item.systemd_after | default(disks_partition_defaults.systemd_after) }}"
+      format: "{{ disks_item.format | default(disks_partition_defaults.format) }}"
+      force: "{{ disks_item.force | default(disks_partition_defaults.force) }}"
+      resizefs: "{{ disks_item.resizefs | default(disks_partition_defaults.resizefs) }}"
+      state: "{{ disks_item.state | default(disks_partition_defaults.state) }}"
+      format_options: "{{ disks_item.format_options | default(disks_partition_defaults.format_options) }}"
+      mount_options: "{{ disks_item.mount_options | default(disks_partition_defaults.mount_options) }}"
+      lvm: "{{ disks_item.lvm | default(disks_partition_defaults.lvm) }}"
+      lvm_vg_name: "{{ disks_item.lvm_vg_name | default(disks_partition_defaults.lvm_vg_name) }}"
+      lvm_lv_name: "{{ disks_item.lvm_lv_name | default(disks_partition_defaults.lvm_vg_name) }}"
+      lvm_vg_options: "{{ disks_item.lvm_vg_options | default(disks_partition_defaults.lvm_vg_options) }}"
+      lvm_pv_options: "{{ disks_item.lvm_pv_options | default(disks_partition_defaults.lvm_pv_options) }}"
+      lvm_lv_options: "{{ disks_item.lvm_lv_options | default(disks_partition_defaults.lvm_lv_options) }}"
+      lvm_pvresize: "{{ disks_item.lvm_pvresize | default(disks_partition_defaults.lvm_pvresize) }}"
+
+- name: Validate configuration record
+  ansible.builtin.assert:
+    that:
+      - disks_disk_config.device.startswith('/dev/')
+      - disks_disk_config.format in ['ext4', 'xfs', 'swap', 'btrfs']
+      - disks_disk_config.mount_path.startswith('/')
+      - disks_disk_config.mount_type in ['systemd', 'fstab']
+      - disks_disk_config.mount_options is defined    # TODO add specific validation for this
+      - disks_disk_config.format_options is defined    # TODO add specific validation for this
+      - disks_disk_config.force in [True, False]
+      - ((disks_disk_config.state in ['present', 'mounted', 'absent', 'unmounted']) if disks_item.mount_type == 'systemd' else True)
+      - ((disks_disk_config.state in ['absent', 'absent_from_fstab', 'mounted', 'present', 'unmounted', 'remounted', 'ephemeral']) if disks_item.mount_type == 'fstab' else True)
+      - disks_disk_config.lvm in [True, False]
+      - ((disks_disk_config.lvm_vg_name is regex('^[a-zA-Z0-9]+$')) if disks_disk_config.lvm else True)
+      - ((disks_disk_config.lvm_lv_name is regex('^[a-zA-Z0-9]+$')) if disks_disk_config.lvm else True)
+      - ((disks_disk_config.lvm_vg_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
+      - ((disks_disk_config.lvm_pv_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
+      - ((disks_disk_config.lvm_lv_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
+    fail_msg: "Incorrect configuration specified for disk: {{ disks_disk_config.mount_path | default('Mount path undefined') }}"
+
+- name: Check for block device {{ disks_disk_config.device }}
+  ansible.builtin.stat:
+    path: "{{ disks_disk_config.device }}"
+  register: disks_device_stat
+
+- name: Validate system status
+  ansible.builtin.assert:
+    that:
+      - disks_device_stat.stat.islnk is defined
+    fail_msg: 💥 Block device {{ disks_disk_config.device }} does not exist!
+
+- name: Load block device partition information
+  ansible.builtin.command:
+    cmd: "lsblk -J {{ disks_disk_config.device }}"
+  register: __disks_lsblk_output
+  changed_when: false
+
+- name: Parse block device partition information
+  ansible.builtin.set_fact:
+    __disks_device_blockdevices: "{{ (__disks_lsblk_output.stdout | from_json).blockdevices }}"
+
+# LVM disks created and managed by this role should only contain 'lvm' type volumes
+- name: Validate LVM block device existing configuration
+  when:
+    - disks_disk_config.lvm
+    - not disks_disk_config.force
+    - __disks_device_blockdevices.children is defined
+  ansible.builtin.assert:
+    that:
+      - __disks_device_blockdevices.children | selectattr('type', 'equalto', 'lvm') | list | length == __disks_device_blockdevices.children | list | length
+    fail_msg: 💥 LVM configuration mismatch for block device {{ disks_disk_config.device }}! Disk has partitions, but expected LVM configuration not found.
+    success_msg: Block device with existing LVM configuration found
+

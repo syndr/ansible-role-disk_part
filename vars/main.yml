@@ -1,0 +1,9 @@
+---
+# vars file for disks
+
+# List of systemd service names corresponding to disk mounts
+disks_pending_systemd_mounts: []
+
+# List of fstab-managed mount points that should be re-mounted
+disks_pending_fstab_mounts: []
+

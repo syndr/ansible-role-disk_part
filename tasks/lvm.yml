@@ -1,0 +1,36 @@
+---
+# Configure LVM physical volumes and volume groups
+
+- name: LVM tools are installed
+  become: true
+  ansible.builtin.package:
+    name: lvm2
+    state: present
+
+- name: Volume group "{{ disks_disk_config.lvm_vg_name }}" exists on top of {{ disks_disk_config.device }}
+  become: true
+  community.general.lvg:
+    vg: vg-{{ disks_disk_config.lvm_vg_name }}
+    pvs: "{{ disks_disk_config.device }}"
+    force: "{{ disks_disk_config.force }}"
+    pvresize: "{{ disks_disk_config.lvm_pvresize }}"
+    pv_options: "{{ disks_disk_config.lvm_pv_options }}"
+    vg_options: "{{ disks_disk_config.lvm_vg_options }}"
+    state: active
+
+- name: Logical volume for volume group "{{ disks_disk_config.lvm_vg_name }}" exists
+  become: true
+  community.general.lvol:
+    vg: vg-{{ disks_disk_config.lvm_vg_name }}
+    lv: lv-{{ disks_disk_config.lvm_lv_name }}
+    force: "{{ disks_disk_config.force }}"
+    opts: "{{ disks_disk_config.lvm_lv_options }}"
+    size: +100%FREE
+    state: present
+
+- name: Set new mount path
+  ansible.builtin.set_fact:
+    disks_disk_config: "{{ disks_disk_config | combine({
+      'device': '/dev/vg-' + disks_disk_config.lvm_vg_name + '/lv-' + disks_disk_config.lvm_lv_name
+      }) }}"
+

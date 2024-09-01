@@ -1,0 +1,21 @@
+[Install]
+WantedBy=multi-user.target
+
+[Unit]
+Description={{ disks_disk_config.description }}
+{% if disks_disk_config.systemd_before is truthy %}
+Before={{ disks_disk_config.systemd_before }}
+{% endif %}
+{% if disks_disk_config.systemd_after is truthy %}
+After={{ disks_disk_config.systemd_after }}
+{% endif %}
+DefaultDependencies=no
+
+[Mount]
+What={{ disks_disk_config.device }}
+Where={{ disks_disk_config.mount_path }}
+Type={{ disks_disk_config.format }}
+{% if disks_disk_config.mount_options is truthy %}
+Options={{ disks_disk_config.mount_options }}
+{% endif %}
+

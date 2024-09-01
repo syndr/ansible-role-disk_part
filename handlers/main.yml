@@ -1,0 +1,8 @@
+---
+# handlers file for disks
+
+- name: Reload systemd service files
+  become: true
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+

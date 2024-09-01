@@ -1,0 +1,59 @@
+---
+# This is run in a loop
+# loop var: disks_item
+
+- name: Priming the blasters!
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/init.yml"
+
+- name: Things to do only if a disk is present (not to be removed)
+  block:
+    - name: Configure LVM
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/lvm.yml"
+      when: disks_disk_config.lvm
+
+    - name: Configure filesystem for {{ disks_disk_config.device }}
+      become: true
+      community.general.filesystem:
+        dev: "{{ disks_disk_config.device }}"
+        fstype: "{{ disks_disk_config.format }}"
+        force: "{{ disks_disk_config.force }}"
+        opts: "{{ disks_disk_config.format_options }}"
+        resizefs: "{{ disks_disk_config.resizefs }}"
+        state: present
+
+    - name: Unmount conflicting partitions
+      block:
+        - name: Collect mounted disk information
+          ansible.builtin.setup:
+            gather_subset:
+              - "!all"
+              - "mounts"
+
+        - name: Check for mount point overlap
+          ansible.builtin.set_fact:
+            disks_current_matching_mount: "{{ item }}"
+          when: item.mount == disks_disk_config.mount_path
+          loop: "{{ ansible_mounts }}"
+          loop_control:
+            label: item.mount
+
+        - name: Unmount overlapping partition
+          become: true
+          ansible.posix.mount:
+            path: "{{ disks_disk_config.mount_path }}"
+            state: absent
+          when:
+            - disks_current_matching_mount is defined
+            - disks_current_matching_mount.device != disks_disk_config.device or disks_current_matching_mount.fstype != disks_disk_config.format
+      when: disks_disk_config.force
+
+  when: disks_disk_config.state != "absent"
+
+- name: Configure systemd mount
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/mount_systemd.yml"
+  when: disks_disk_config.mount_type == "systemd"
+
+- name: Configure fstab mount
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/mount_fstab.yml"
+  when: disks_disk_config.mount_type == "fstab"
+

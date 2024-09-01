@@ -1,0 +1,26 @@
+---
+# Manage a partition mount via /etc/fstab
+
+- name: Configure /etc/fstab mount point ({{ disks_disk_config.mount_path }})
+  become: true
+  ansible.posix.mount:
+    path: "{{ disks_disk_config.mount_path }}"
+    src: "{{ disks_disk_config.device }}"
+    opts: "{{ disks_disk_config.mount_options }}"
+    fstype: "{{ disks_disk_config.format }}"
+    state: "{{ disks_disk_config.state }}"
+    backup: true
+  register: disks_fstab_install_output
+
+# If disk was already mounted, remount if config changed
+# TODO double check whether posix.mount does this internally already
+- name: Add disk to remount queue
+  become: true
+  ansible.posix.mount:
+    path: "{{ disks_disk_config.mount_path }}"
+    state: remounted
+  when:
+    - disks_fstab_install_output is changed
+    - disks_disk_config.mount_path in (ansible_mounts | map(attribute='mount') | list)
+    - disks_disk_config.status == 'mounted'
+
