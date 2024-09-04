@@ -116,7 +116,7 @@ Example configuration using a traditional `/etc/fstab` mount:
 ```
 
 Example configuration using a systemd mount unit:  
-```yaml.ansible
+```yaml
 - name: Make the disks
   hosts: all
   tasks:
@@ -134,10 +134,10 @@ Example configuration using a systemd mount unit:
 License
 -------
 
-BSD
+MIT
 
 Author Information
 ------------------
 
-- ([@syndr](https://github.com/syndr/))
+- [@syndr](https://github.com/syndr/)
 
