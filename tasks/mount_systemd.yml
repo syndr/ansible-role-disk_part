@@ -57,7 +57,7 @@
     name: "{{ disks_systemd_filename }}"
     state: stopped
   when:
-    - disks_systemd_filename in services
+    - disks_systemd_filename in ansible_facts.services
     - disks_disk_config.state == "absent" or disks_disk_config.state == "unmounted"
 
 - name: Remove systemd unit
