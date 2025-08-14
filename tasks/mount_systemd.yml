@@ -37,6 +37,7 @@
       ansible.builtin.systemd_service:
         name: "{{ disks_systemd_filename }}"
         state: started
+        enabled: true
       when:
         - disks_systemd_install_output is not changed
         - disks_disk_config.state == 'mounted'
@@ -46,6 +47,7 @@
       ansible.builtin.systemd_service:
         state: restarted
         name: "{{ disks_systemd_filename }}"
+        enabled: true
       when:
         - disks_systemd_install_output is changed
         - disks_disk_config.state == 'mounted'
@@ -56,6 +58,7 @@
   ansible.builtin.systemd_service:
     name: "{{ disks_systemd_filename }}"
     state: stopped
+    enabled: false
   when:
     - disks_systemd_filename in services
     - disks_disk_config.state == "absent" or disks_disk_config.state == "unmounted"
