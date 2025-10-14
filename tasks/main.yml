@@ -1,15 +1,41 @@
 ---
 # tasks file for disks
 
+- name: Initialize role
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/init.yml"
+
 - name: Validate configuration
   ansible.builtin.assert:
     that:
       - disks_partitions | type_debug == 'list'
 
-- name: Create disk
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/disk.yml"
+- name: Load host facts
+  ansible.builtin.setup:
+    gather_subset:
+      - mounts
+
+- name: Manage disk
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/manage_disk.yml"
   loop: "{{ disks_partitions }}"
   loop_control:
     loop_var: disks_item
     label: disks_item.mount_path | default('invalid')
 
+- name: Save disk facts
+  become: true
+  block:
+    - name: Ansible facts directory exists
+      ansible.builtin.file:
+        path: /etc/ansible/facts.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Write disk configuration fact
+      ansible.builtin.copy:
+        dest: /etc/ansible/facts.d/disk_part.fact
+        content: "{{ disks_fact_data | to_nice_json }}"
+        owner: root
+        group: root
+        mode: '0644'

@@ -1,4 +1,4 @@
-Disk Part
+disks
 =========
 
 Configure disks on the target host. This includes:
@@ -20,7 +20,7 @@ The desired disk must already be attached to the target machine.
 Role Variables
 --------------
 
-```yaml
+```yaml.ansible
 ######## Disk Partitions #######################################################
 #
 # The disks_partitions variable contains a list of dictionaries which define
@@ -99,13 +99,13 @@ Example Playbook
 ----------------
 
 Example configuration using a traditional `/etc/fstab` mount:  
-```yaml
+```yaml.ansible
 - name: Make the disks
   hosts: all
   tasks:
     - name: Configure disks
       ansible.builtin.include_role:
-        name: disk_part
+        name: disks
       vars:
         disks_partitions:
           - device: /dev/sdf
@@ -116,13 +116,13 @@ Example configuration using a traditional `/etc/fstab` mount:
 ```
 
 Example configuration using a systemd mount unit:  
-```yaml
+```yaml.ansible
 - name: Make the disks
   hosts: all
   tasks:
     - name: Configure disks
       ansible.builtin.include_role:
-        name: disk_part
+        name: disks
       vars:
         disks_partitions:
           - device: /dev/sdf

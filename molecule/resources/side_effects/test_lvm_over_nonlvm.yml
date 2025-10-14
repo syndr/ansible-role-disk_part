@@ -1,0 +1,35 @@
+---
+# Test scenario: Attempt LVM creation over existing filesystem (should fail)
+# Validates that the role properly blocks dangerous LVM operations over existing filesystems
+
+- name: Test LVM creation attempt over existing filesystem
+  tags: always
+  block:
+    - name: Attempt to create LVM over existing filesystem (should fail)
+      vars:
+        disks_partitions:
+          - device: /dev/nvme1n1
+            format: ext4
+            mount_path: /mnt/lvm_test1
+            mount_type: fstab
+            lvm: true
+            lvm_vg_name: data
+            lvm_lv_name: disk1
+      ansible.builtin.include_role:
+        name: disks
+
+    - name: Fail if the role succeeded when it should have blocked
+      ansible.builtin.fail:
+        msg: "Role should have failed when attempting to create LVM over existing filesystem"
+
+  rescue:
+    - name: Validate expected error message for filesystem protection
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result.msg is defined
+          - '"Device contains an existing filesystem (ext4)" in ansible_failed_result.msg'
+          - '"force: true" in ansible_failed_result.msg'
+        fail_msg: |
+          Expected error message about existing filesystem not found.
+          Actual error: {{ ansible_failed_result.msg | default('No error message') }}
+        success_msg: "✓ Validation correctly blocked LVM creation over existing ext4 filesystem"

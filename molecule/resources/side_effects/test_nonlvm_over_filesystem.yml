@@ -1,0 +1,33 @@
+---
+# Test scenario: Attempt non-LVM filesystem creation over existing non-LVM filesystem (should fail)
+# Validates that the role prevents overwriting existing filesystems without force
+
+- name: Test non-LVM deployment over existing non-LVM filesystem (should fail)
+  tags: always
+  block:
+    - name: Attempt to create non-LVM filesystem over existing non-LVM device (should fail)
+      vars:
+        disks_partitions:
+          - device: /dev/nvme1n1
+            format: xfs
+            mount_path: /mnt/dangerous_test2
+            mount_type: fstab
+            lvm: false
+      ansible.builtin.include_role:
+        name: disks
+
+    - name: Fail if the role succeeded when it should have blocked non-LVM over non-LVM
+      ansible.builtin.fail:
+        msg: "Role should have failed when attempting to create filesystem over existing filesystem"
+
+  rescue:
+    - name: Validate expected error message for filesystem protection
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result.msg is defined
+          - '"Device contains an existing filesystem" in ansible_failed_result.msg'
+          - '"force: true" in ansible_failed_result.msg'
+        fail_msg: |
+          Expected error message about existing filesystem not found.
+          Actual error: {{ ansible_failed_result.msg | default('No error message') }}
+        success_msg: "✓ Validation correctly blocked non-LVM creation over existing filesystem"

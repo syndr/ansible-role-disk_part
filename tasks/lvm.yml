@@ -1,36 +1,57 @@
 ---
-# Configure LVM physical volumes and volume groups
+# Configure LVM physical volumes and volume groups with partition detection and safety checks
 
-- name: LVM tools are installed
-  become: true
-  ansible.builtin.package:
-    name: lvm2
-    state: present
+- name: Manage a LVM volume group
+  vars:
+    __disks_force_enabled: >-
+      {{
+        disks_disk_config.force | default(false)
+      }}
+  block:
+    - name: Check for existing volume group "{{ disks_disk_config.lvm_vg_name }}"
+      become: true
+      ansible.builtin.command:
+        cmd: "pvs --noheadings -o pv_name -S vg_name=vg-{{ disks_disk_config.lvm_vg_name }}"
+      register: __disks_existing_vg_pvs
+      changed_when: false
+      check_mode: false
+      failed_when: false
 
-- name: Volume group "{{ disks_disk_config.lvm_vg_name }}" exists on top of {{ disks_disk_config.device }}
-  become: true
-  community.general.lvg:
-    vg: vg-{{ disks_disk_config.lvm_vg_name }}
-    pvs: "{{ disks_disk_config.device }}"
-    force: "{{ disks_disk_config.force }}"
-    pvresize: "{{ disks_disk_config.lvm_pvresize }}"
-    pv_options: "{{ disks_disk_config.lvm_pv_options }}"
-    vg_options: "{{ disks_disk_config.lvm_vg_options }}"
-    state: active
+    - name: Ensure volume group "{{ disks_disk_config.lvm_vg_name }}" exists with proper physical volumes
+      vars:
+        __disks_existing_pvs: >
+          {{
+            (__disks_existing_vg_pvs.stdout_lines | map('trim') | list)
+            if __disks_existing_vg_pvs.rc == 0 and __disks_existing_vg_pvs.stdout_lines | length > 0
+            else []
+          }}
+        __disks_target_pvs: >
+          {{
+            (__disks_existing_pvs + [disks_disk_config.device]) | unique | sort
+          }}
+      become: true
+      community.general.lvg:
+        vg: "vg-{{ disks_disk_config.lvm_vg_name }}"
+        pvs: "{{ __disks_target_pvs | join(',') }}"
+        force: "{{ __disks_force_enabled }}"
+        pvresize: "{{ disks_disk_config.lvm_pvresize | default(omit) }}"
+        pv_options: "{{ disks_disk_config.lvm_pv_options | default(omit) }}"
+        vg_options: "{{ disks_disk_config.lvm_vg_options | default(omit) }}"
+        state: active
 
-- name: Logical volume for volume group "{{ disks_disk_config.lvm_vg_name }}" exists
-  become: true
-  community.general.lvol:
-    vg: vg-{{ disks_disk_config.lvm_vg_name }}
-    lv: lv-{{ disks_disk_config.lvm_lv_name }}
-    force: "{{ disks_disk_config.force }}"
-    opts: "{{ disks_disk_config.lvm_lv_options }}"
-    size: +100%FREE
-    state: present
+    - name: Ensure logical volume "{{ disks_disk_config.lvm_lv_name }}" exists
+      become: true
+      community.general.lvol:
+        vg: "vg-{{ disks_disk_config.lvm_vg_name }}"
+        lv: "lv-{{ disks_disk_config.lvm_lv_name }}"
+        force: "{{ __disks_force_enabled }}"
+        opts: "{{ disks_disk_config.lvm_lv_options | default(omit) }}"
+        size: +{{ disks_disk_config.lvm_size_percent }}%FREE
+        state: present
 
-- name: Set new mount path
-  ansible.builtin.set_fact:
-    disks_disk_config: "{{ disks_disk_config | combine({
-      'device': '/dev/vg-' + disks_disk_config.lvm_vg_name + '/lv-' + disks_disk_config.lvm_lv_name
-      }) }}"
-
+    - name: Update device path to point to the logical volume
+      ansible.builtin.set_fact:
+        disks_disk_config: >-
+          {{ disks_disk_config | combine({
+             'device': '/dev/vg-' + disks_disk_config.lvm_vg_name + '/lv-' + disks_disk_config.lvm_lv_name
+          }) }}

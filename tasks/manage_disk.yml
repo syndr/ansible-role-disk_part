@@ -1,0 +1,66 @@
+---
+# This is run in a loop
+# loop var: disks_item
+
+- name: Priming the blasters!
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/init_disk_config.yml"
+
+- name: Things to do only if a disk is present (not to be removed)
+  when: disks_disk_config.state != "absent"
+  block:
+    - name: Checking target coordinates
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/check_state.yml"
+
+    - name: Store disk configuration fact
+      ansible.builtin.set_fact:
+        disks_fact_data: "{{ disks_fact_data + [ disks_disk_config ] }}"
+
+    - name: Configure LVM
+      when: disks_disk_config.lvm
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/lvm.yml"
+
+    - name: Configure filesystem for {{ disks_disk_config.device }}
+      become: true
+      community.general.filesystem:
+        dev: "{{ disks_disk_config.device }}"
+        fstype: "{{ disks_disk_config.format }}"
+        force: "{{ disks_disk_config.force }}"
+        opts: "{{ disks_disk_config.format_options }}"
+        resizefs: "{{ disks_disk_config.resizefs }}"
+        state: present
+
+    - name: Unmount conflicting partitions
+      when: disks_disk_config.force
+      block:
+        - name: Collect mounted disk information
+          ansible.builtin.setup:
+            gather_subset:
+              - "!all"
+              - "mounts"
+
+        - name: Check for mount point overlap
+          loop: "{{ ansible_mounts | selectattr('mount', 'equalto', disks_disk_config.mount_path) | list }}"
+          loop_control:
+            label: item.mount
+          ansible.builtin.set_fact:
+            disks_current_matching_mount: "{{ item }}"
+
+        - name: Unmount overlapping partition
+          become: true
+          ansible.posix.mount:
+            path: "{{ disks_disk_config.mount_path }}"
+            state: absent
+          when:
+            - disks_current_matching_mount is defined
+            - >-
+              disks_current_matching_mount.device != disks_disk_config.device
+              or
+              disks_current_matching_mount.fstype != disks_disk_config.format
+
+- name: Configure systemd mount
+  when: disks_disk_config.mount_type == "systemd"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/mount_systemd.yml"
+
+- name: Configure fstab mount
+  when: disks_disk_config.mount_type == "fstab"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/mount_fstab.yml"

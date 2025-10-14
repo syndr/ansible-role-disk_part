@@ -17,6 +17,7 @@
 #   - mount_path (required): The file system path at which to mount the partition
 #   - mount_type (optional): Method to use to mount the partition (fstab/systemd)
 #   - mount_options (optional): Options to be used when mounting the filesystem (string)
+#   - mount_uuid_path (optional): Use UUID path instead of device path (IE /dev/sdx) for mounting (true/false)
 #   - resizefs (optional): Grow the filesystem to match the size of the block device (true/false)
 #      * not supported for swap format
 #   - state (optional): Existence of the partition (present/absent)
@@ -33,6 +34,7 @@
 #   - lvm_vg_options (optional): Options to be passed to the vgcreate command (string)
 #   - lvm_lv_options (optional): Options to be passed to the lvcreate command (string)
 #   - lvm_pvresize: (optional): Should LVM volumes be expanded to match block device size (true/false)
+#   - lvm_size_percent (optional): Percentage of free space in VG to allocate to LV (integer 1-100)
 #
 
 #disks_partitions:
@@ -46,13 +48,17 @@
 
 # }}}
 
+# Allow automatic cleanup of duplicate mount points when mount paths change
+disks_allow_mountpoint_changes: true
 
 # Default values ↓
+
 disks_partition_defaults:
   format: btrfs
   format_options: ""
   mount_type: systemd
   mount_options: defaults
+  mount_uuid_path: true
   force: false
   resizefs: false
   state: mounted
@@ -66,6 +72,7 @@ disks_partition_defaults:
   lvm_pv_options: ""
   lvm_lv_options: ""
   lvm_pvresize: true
+  lvm_size_percent: 100
 
 
 # vim:foldmethod=marker:foldmarker={{{,}}}:ft=yaml.ansible

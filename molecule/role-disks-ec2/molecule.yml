@@ -1,0 +1,141 @@
+---
+role_name_check: 0
+dependency:
+  name: galaxy
+driver:
+  name: default
+  options:
+    managed: true
+platforms:
+  - name: role-disks-ec2-al2
+    type: ec2
+    image: ami-0ab69690991408217  # Amazon Linux 2
+    region: us-west-2
+    instance_type: t3.micro
+    ssh_user: molecule_runner
+    vpc_id: vpc-07bd460b98a3fb162
+    vpc_subnet_id: subnet-018b2c7fdd47921c2
+    boot_wait_seconds: 5
+    volumes:
+      - device_name: /dev/xvdb
+        virtual_name: moleucle-role-disks-ec2-al2-fstab
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvdc
+        virtual_name: molecule-role-disks-ec2-al2-lvm
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+    hostvars:
+      org: molecule
+      env: ci
+      disks_partitions:
+        - device: /dev/nvme1n1
+          format: ext4
+          lvm: false
+          mount_path: /mnt/fstab_test
+          mount_type: fstab
+        - device: /dev/nvme2n1
+          format: xfs
+          mount_path: /mnt/lvm_test
+          mount_type: systemd
+  - name: role-disks-ec2-rocky9
+    type: ec2
+    image: ami-0adebe3adcec1fa34  # Rocky-9-EC2-Base-9.6-20250531.0.x86_64
+    region: us-west-2
+    instance_type: t3.small
+    ssh_user: molecule_runner
+    vpc_id: vpc-07bd460b98a3fb162
+    vpc_subnet_id: subnet-018b2c7fdd47921c2
+    boot_wait_seconds: 5
+    volumes:
+      - device_name: /dev/xvdb
+        virtual_name: moleucle-role-disks-ec2-rocky9-fstab
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvdc
+        virtual_name: molecule-role-disks-ec2-rocky9-lvm
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+    hostvars:
+      org: molecule
+      env: ci
+      disks_partitions:
+        - device: /dev/nvme1n1
+          format: ext4
+          lvm: false
+          mount_path: /mnt/fstab_test
+          mount_type: fstab
+        - device: /dev/nvme2n1
+          format: xfs
+          mount_path: /mnt/lvm_test
+          mount_type: systemd
+provisioner:
+  name: ansible
+  log: True
+  playbooks:
+    create: ../resources/create.yml
+    prepare: ../resources/prepare.yml
+    converge: ../resources/converge.yml
+    side_effect: ../resources/side_effect.yml
+    verify: ../resources/verify.yml
+    cleanup: ../resources/cleanup.yml
+    destroy: ../resources/destroy.yml
+  config_options:
+    defaults:
+      gathering: explicit
+      playbook_vars_root: top
+      verbosity: ${ANSIBLE_VERBOSITY:-0}
+  env:
+    ARA_API_CLIENT: ${ARA_API_CLIENT:-'http'}
+    ARA_API_SERVER: ${ARA_API_SERVER:-'http://localhost:8000'}
+    ARA_DEFAULT_LABELS: ${ARA_DEFAULT_LABELS:-'testing,molecule'}
+    # To use Ara with molecule:
+    #  export the ANSIBLE_CALLBACK_PLUGINS env var with the output of 'python3 -m ara.setup.callback_plugins'
+    ANSIBLE_CALLBACK_PLUGINS: ${ANSIBLE_CALLBACK_PLUGINS}
+scenario:
+  create_sequence:
+    - dependency
+    - create
+    - prepare
+  check_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - create
+    - prepare
+    - converge
+    - check
+    - destroy
+  converge_sequence:
+    - dependency
+    - create
+    - prepare
+    - converge
+  destroy_sequence:
+    - dependency
+    - cleanup
+    - destroy
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - side_effect
+    - verify
+    - cleanup
+    - destroy
+verifier:
+  name: ansible
+  enabled: true

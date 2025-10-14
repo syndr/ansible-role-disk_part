@@ -1,0 +1,12 @@
+---
+
+- name: Perform cleanup
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Remove platform(s)
+      vars:
+        platform_state: absent
+      ansible.builtin.include_role:
+        name: syndr.molecule.platform
+

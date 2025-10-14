@@ -1,0 +1,78 @@
+---
+# The side effect playbook executes actions which produce side effects to the instances(s). Intended to test HA failover scenarios or the like.
+
+- name: Set up runtime environment
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Load system facts
+      tags: always
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - "!min"
+          - distribution
+
+    - name: Add compatibility options for legacy OS
+      tags: always
+      when: >
+        ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2' or
+        ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+      ansible.builtin.set_fact:
+        ansible_python_interpreter: /usr/local/bin/python3.10
+
+- name: Test LVM multiple devices with same VG
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Execute LVM over filesystem validation test
+      tags: always
+      ansible.builtin.include_tasks: side_effects/test_lvm_over_nonlvm.yml
+
+    - name: Execute clean device LVM validation test
+      tags: always
+      ansible.builtin.include_tasks: side_effects/test_lvm_over_lvm.yml
+
+- name: Test non-LVM validation against existing data
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Execute non-LVM over LVM validation test
+      tags: always
+      ansible.builtin.include_tasks: side_effects/test_nonlvm_over_lvm.yml
+
+    - name: Execute non-LVM over filesystem validation test
+      tags: always
+      ansible.builtin.include_tasks: side_effects/test_nonlvm_over_filesystem.yml
+
+- name: Test mount point changes
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Execute mount point change test
+      tags: 
+        - always
+        - mount_point_change
+      ansible.builtin.include_tasks: side_effects/test_mount_point_change.yml
+
+    - name: Execute data integrity verification
+      tags: always
+      vars:
+        ci_companion_cubes:
+          - /mnt/fstab_test_new/companion_cube.txt
+          - /mnt/lvm_test_new/companion_cube.txt
+      ansible.builtin.include_tasks: checks/verify_data_integrity.yml
+
+- name: Re-run with default configuration (match expected for 'verify' phase)
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Load disks role with default configuration
+      tags: always
+      ansible.builtin.include_role:
+        name: disks
