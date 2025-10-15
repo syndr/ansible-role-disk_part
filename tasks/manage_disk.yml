@@ -7,13 +7,11 @@
 
 - name: Things to do only if a disk is present (not to be removed)
   when: disks_disk_config.state != "absent"
+  vars:
+    __disks_original_device: "{{ disks_disk_config.device }}"
   block:
     - name: Checking target coordinates
       ansible.builtin.include_tasks: "{{ role_path }}/tasks/check_state.yml"
-
-    - name: Store disk configuration fact
-      ansible.builtin.set_fact:
-        disks_fact_data: "{{ disks_fact_data + [ disks_disk_config ] }}"
 
     - name: Configure LVM
       when: disks_disk_config.lvm
@@ -28,6 +26,20 @@
         opts: "{{ disks_disk_config.format_options }}"
         resizefs: "{{ disks_disk_config.resizefs }}"
         state: present
+
+    - name: Get disk UUID
+      when: disks_disk_config.mount_uuid_path | default(false)
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
+
+    - name: Store disk configuration fact
+      vars:
+        __disks_fact_record: >-
+          {{
+            disks_disk_config
+            | combine({'device': __disks_original_device})
+          }}
+      ansible.builtin.set_fact:
+        disks_fact_data: "{{ disks_fact_data + [ __disks_fact_record ] }}"
 
     - name: Unmount conflicting partitions
       when: disks_disk_config.force

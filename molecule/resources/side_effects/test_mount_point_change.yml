@@ -8,13 +8,13 @@
     - name: Change mount point for existing ext4 filesystem
       vars:
         disks_partitions:
-          - device: /dev/nvme1n1
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
             format: ext4
             mount_path: /mnt/fstab_test_new  # Changed from /mnt/fstab_test
             mount_type: fstab
             lvm: false
       ansible.builtin.include_role:
-        name: disks
+        name: disk_part
 
     - name: Verify filesystem was not recreated (companion cube should exist)
       become: true
@@ -49,7 +49,7 @@
     - name: Change mount point for existing LVM xfs filesystem
       vars:
         disks_partitions:
-          - device: /dev/nvme2n1
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
             format: xfs
             mount_path: /mnt/lvm_test_new  # Changed from /mnt/lvm_test
             mount_type: systemd
@@ -57,7 +57,7 @@
             lvm_vg_name: data
             lvm_lv_name: data
       ansible.builtin.include_role:
-        name: disks
+        name: disk_part
 
     - name: Verify LVM filesystem was not recreated (companion cube should exist)
       become: true

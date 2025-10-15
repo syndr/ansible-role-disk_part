@@ -1,0 +1,42 @@
+---
+# Get the UUID for the current disk and update the device path
+# This task should only be called for devices that exist and need UUID mounting
+# LVM devices use /dev/vg-name/lv-name paths and should not be converted to UUID
+
+- name: Get UUID for {{ disks_disk_config.device }}
+  become: true
+  when:
+    - not disks_disk_config.lvm
+    - not (disks_disk_config.device.startswith('/dev/disk/by-uuid/') or disks_disk_config.device.startswith('/dev/disk/by-id/'))
+  ansible.builtin.command:
+    cmd: "blkid -s UUID -o value {{ disks_disk_config.device }}"
+  register: __disks_blkid_output
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Validate UUID was retrieved
+  when: __disks_blkid_output is not skipped
+  ansible.builtin.assert:
+    that:
+      - __disks_blkid_output.rc == 0
+      - __disks_blkid_output.stdout is defined
+      - __disks_blkid_output.stdout | length > 0
+    fail_msg: "Could not determine UUID for device {{ disks_disk_config.device }}"
+    success_msg: "UUID for device {{ disks_disk_config.device }} is {{ __disks_blkid_output.stdout | trim }}"
+
+- name: Update device path to use UUID
+  when:
+    - __disks_blkid_output is not skipped
+    - __disks_blkid_output.rc == 0
+    - __disks_blkid_output.stdout is defined
+    - __disks_blkid_output.stdout | length > 0
+  ansible.builtin.set_fact:
+    disks_disk_config: >-
+      {{
+        disks_disk_config
+        | combine({
+          'device': '/dev/disk/by-uuid/' ~ (__disks_blkid_output.stdout | trim),
+          'uuid': __disks_blkid_output.stdout | trim
+        })
+      }}

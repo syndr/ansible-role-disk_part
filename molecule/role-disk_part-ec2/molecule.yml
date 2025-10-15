@@ -7,59 +7,24 @@ driver:
   options:
     managed: true
 platforms:
-  - name: role-disks-ec2-al2
+  - name: role-disk_part-ec2-rocky9
     type: ec2
-    image: ami-0ab69690991408217  # Amazon Linux 2
-    region: us-west-2
-    instance_type: t3.micro
-    ssh_user: molecule_runner
-    vpc_id: vpc-07bd460b98a3fb162
-    vpc_subnet_id: subnet-018b2c7fdd47921c2
-    boot_wait_seconds: 5
-    volumes:
-      - device_name: /dev/xvdb
-        virtual_name: moleucle-role-disks-ec2-al2-fstab
-        ebs:
-          volume_type: gp3
-          volume_size: 1
-          delete_on_termination: true
-      - device_name: /dev/xvdc
-        virtual_name: molecule-role-disks-ec2-al2-lvm
-        ebs:
-          volume_type: gp3
-          volume_size: 1
-          delete_on_termination: true
-    hostvars:
-      org: molecule
-      env: ci
-      disks_partitions:
-        - device: /dev/nvme1n1
-          format: ext4
-          lvm: false
-          mount_path: /mnt/fstab_test
-          mount_type: fstab
-        - device: /dev/nvme2n1
-          format: xfs
-          mount_path: /mnt/lvm_test
-          mount_type: systemd
-  - name: role-disks-ec2-rocky9
-    type: ec2
-    image: ami-0adebe3adcec1fa34  # Rocky-9-EC2-Base-9.6-20250531.0.x86_64
+    image: ami-02bdea1288da860c4  # Rocky Linux 9 with LVM (Official) - x86_64
     region: us-west-2
     instance_type: t3.small
     ssh_user: molecule_runner
-    vpc_id: vpc-07bd460b98a3fb162
-    vpc_subnet_id: subnet-018b2c7fdd47921c2
+    vpc_id: vpc-02e78d8e8634151bb
+    vpc_subnet_id: subnet-07a4e58b029a32c0c
     boot_wait_seconds: 5
     volumes:
       - device_name: /dev/xvdb
-        virtual_name: moleucle-role-disks-ec2-rocky9-fstab
+        virtual_name: molecule-role-disk_part-ec2-rocky9-fstab
         ebs:
           volume_type: gp3
           volume_size: 1
           delete_on_termination: true
       - device_name: /dev/xvdc
-        virtual_name: molecule-role-disks-ec2-rocky9-lvm
+        virtual_name: molecule-role-disk_part-ec2-rocky9-lvm
         ebs:
           volume_type: gp3
           volume_size: 1
@@ -67,16 +32,35 @@ platforms:
     hostvars:
       org: molecule
       env: ci
-      disks_partitions:
-        - device: /dev/nvme1n1
-          format: ext4
-          lvm: false
-          mount_path: /mnt/fstab_test
-          mount_type: fstab
-        - device: /dev/nvme2n1
-          format: xfs
-          mount_path: /mnt/lvm_test
-          mount_type: systemd
+      # Device paths are dynamically discovered in prepare.yml
+      # and stored in /etc/ansible/facts.d/molecule_disks.fact
+  - name: role-disk_part-ec2-rocky10
+    type: ec2
+    image: ami-03de42ec590769b4e  # Rocky Linux 10 (Official) - x86_64
+    region: us-west-2
+    instance_type: t3.small
+    ssh_user: molecule_runner
+    vpc_id: vpc-02e78d8e8634151bb
+    vpc_subnet_id: subnet-07a4e58b029a32c0c
+    boot_wait_seconds: 5
+    volumes:
+      - device_name: /dev/xvdb
+        virtual_name: molecule-role-disk_part-ec2-rocky10-fstab
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvdc
+        virtual_name: molecule-role-disk_part-ec2-rocky10-lvm
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+    hostvars:
+      org: molecule
+      env: ci
+      # Device paths are dynamically discovered in prepare.yml
+      # and stored in /etc/ansible/facts.d/molecule_disks.fact
 provisioner:
   name: ansible
   log: True

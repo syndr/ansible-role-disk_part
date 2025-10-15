@@ -13,6 +13,7 @@
           - "!all"
           - "!min"
           - distribution
+          - local
 
     - name: Add compatibility options for legacy OS
       tags: always
@@ -72,7 +73,20 @@
   vars:
     ansible_user: molecule_runner
   tasks:
-    - name: Load disks role with default configuration
+    - name: Load disk_part role with default configuration
       tags: always
+      vars:
+        # This should match config in converge.yml
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/fstab_test
+            mount_type: fstab
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
+            format: xfs
+            lvm: true
+            mount_path: /mnt/lvm_test
+            mount_type: systemd
       ansible.builtin.include_role:
-        name: disks
+        name: disk_part

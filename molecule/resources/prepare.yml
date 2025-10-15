@@ -86,3 +86,57 @@
         - name: Disable getty service (Rocky)
           ansible.builtin.systemd_service:
             name: getty@tty1
+
+    - name: Discover test data disks
+      become: true
+      block:
+        - name: Get list of block devices
+          ansible.builtin.command:
+            cmd: lsblk -ndo NAME,SIZE,TYPE
+          register: __molecule_lsblk_output
+          changed_when: false
+
+        - name: Parse available data disks (1GB, type disk)
+          ansible.builtin.set_fact:
+            __molecule_available_disks: >-
+              {{
+                __molecule_lsblk_output.stdout_lines
+                | select('search', '1G.*disk')
+                | map('regex_replace', '^(\S+).*', '/dev/\1')
+                | list
+              }}
+
+        - name: Validate we have enough disks for testing
+          ansible.builtin.assert:
+            that:
+              - __molecule_available_disks | length >= 2
+            fail_msg: "Need at least 2 x 1GB disks for testing, found {{ __molecule_available_disks | length }}"
+            success_msg: "Found {{ __molecule_available_disks | length }} data disks for testing"
+
+        - name: Display discovered disks
+          ansible.builtin.debug:
+            msg: "Discovered data disks: {{ __molecule_available_disks }}"
+
+        - name: Ensure ansible facts directory exists
+          ansible.builtin.file:
+            path: /etc/ansible/facts.d
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Save discovered disk mapping to local facts
+          ansible.builtin.copy:
+            content: |
+              {
+                "fstab_disk": "{{ __molecule_available_disks[0] }}",
+                "lvm_disk": "{{ __molecule_available_disks[1] }}"
+              }
+            dest: /etc/ansible/facts.d/molecule_disks.fact
+            owner: root
+            group: root
+            mode: '0644'
+
+        - name: Reload ansible facts to pick up disk mapping
+          ansible.builtin.setup:
+            filter: ansible_local

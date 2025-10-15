@@ -53,5 +53,6 @@
       ansible.builtin.set_fact:
         disks_disk_config: >-
           {{ disks_disk_config | combine({
-             'device': '/dev/vg-' + disks_disk_config.lvm_vg_name + '/lv-' + disks_disk_config.lvm_lv_name
+             'device': '/dev/vg-' + disks_disk_config.lvm_vg_name + '/lv-' + disks_disk_config.lvm_lv_name,
+             'mount_uuid_path': false
           }) }}

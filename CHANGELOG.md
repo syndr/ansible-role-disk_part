@@ -1,5 +1,29 @@
 # Changelog
 
+## [Unreleased] - 2025-10-15
+### Added
+- mount_uuid_path option to mount non-LVM filesystems via /dev/disk/by-uuid for stability
+- Automatic UUID discovery task (get_uuid.yml)
+- Persisted fact file /etc/ansible/facts.d/disk_part.fact capturing disk config & UUIDs
+- lvm_size_percent parameter
+- Expanded Molecule resources: dynamic disk discovery, validation, new side effect & EC2 scenario (role-disk_part-ec2)
+- Added requirements.txt with explicit dependencies (ansible-core >=2.20.0b2, molecule >=25.0, ara, etc.)
+
+### Changed
+- Default filesystem format: ext4 -> btrfs
+- Default mount options: "" -> defaults
+- Default state: present -> mounted
+- Role references in Molecule updated from legacy name to disk_part; switched to syndr.molecule collection
+- LVM mount entries now explicitly disable UUID mounting
+- Improved validation & fact storage order (after UUID / LVM resolution)
+
+### Fixed
+- Correct handling when inspecting devices without children in LVM assertions
+- Accurate device matching in verification for UUID vs LVM paths
+
+### Breaking Changes
+- Defaults changed (format=btrfs, state=mounted, mount_options=defaults, lvm now enabled by default) which may alter behavior of playbooks relying on previous implicit defaults.
+
 ## Improve validation and idempotence for disk management role
 
 ### 🎯 Fixed

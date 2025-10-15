@@ -8,13 +8,13 @@
     - name: Attempt to create non-LVM filesystem over existing LVM device (should fail)
       vars:
         disks_partitions:
-          - device: /dev/nvme2n1
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
             format: ext4
             mount_path: /mnt/dangerous_test
             mount_type: fstab
             lvm: false
       ansible.builtin.include_role:
-        name: disks
+        name: disk_part
 
     - name: Fail if the role succeeded when it should have blocked non-LVM over LVM
       ansible.builtin.fail:
@@ -29,7 +29,8 @@
             "Device contains LVM volume groups" in ansible_failed_result.msg or
             "Device contains other LVM volume groups" in ansible_failed_result.msg or
             "Device contains an existing filesystem (LVM2_member)" in ansible_failed_result.msg or
-            "already used as LVM2_member" in ansible_failed_result.msg
+            "already used as LVM2_member" in ansible_failed_result.msg or
+            "Device contains existing partitions" in ansible_failed_result.msg
           - '"force" in ansible_failed_result.msg.lower()'
         fail_msg: |
           Expected error message about existing LVM/data not found.

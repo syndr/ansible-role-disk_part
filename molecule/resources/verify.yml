@@ -15,6 +15,7 @@
           - "!all"
           - "!min"
           - distribution
+          - local
 
     - name: Add compatibility options for legacy OS
       when: >-
@@ -22,6 +23,20 @@
         ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
       ansible.builtin.set_fact:
         ansible_python_interpreter: /usr/local/bin/python3.10
+
+    - name: Load discovered disk configuration
+      ansible.builtin.set_fact:
+        disks_partitions:
+          - device: "{{ ansible_local.molecule_disks.fstab_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/fstab_test
+            mount_type: fstab
+          - device: "{{ ansible_local.molecule_disks.lvm_disk }}"
+            format: xfs
+            lvm: true
+            mount_path: /mnt/lvm_test
+            mount_type: systemd
 
     - name: Gather current mount information
       ansible.builtin.setup:
@@ -79,21 +94,27 @@
         label: "{{ disk_config.mount_path | default('no mount path') }}"
       vars:
         matching_mount: "{{ ansible_mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
-        is_lvm: "{{ disk_config.lvm | default(true) }}"
+        is_lvm: "{{ disk_config.lvm | default(false) }}"
+        use_uuid: "{{ disk_config.mount_uuid_path | default(false) }}"
         vg_name: "{{ disk_config.lvm_vg_name | default('data') }}"
         lv_name: "{{ disk_config.lvm_lv_name | default('data') }}"
         expected_symlink: "/dev/vg-{{ vg_name }}/lv-{{ lv_name }}"
         expected_mapper: "/dev/mapper/vg--{{ vg_name }}-lv--{{ lv_name }}"
-        expected_device: "{{ disk_config.device if not is_lvm else expected_symlink }}"
-        valid_devices: "{{ [disk_config.device, expected_symlink, expected_mapper] if is_lvm else [disk_config.device] }}"
+        valid_devices: >-
+          {%- if is_lvm -%}
+            {{ [expected_symlink, expected_mapper] }}
+          {%- else -%}
+            {{ [disk_config.device] }}
+          {%- endif -%}
       ansible.builtin.assert:
         that:
-          - matching_mount.device in valid_devices
+          - (matching_mount.device is match('/dev/disk/by-uuid/.*')) if use_uuid else (matching_mount.device is match('/dev/disk/by-id/.*') or matching_mount.device in valid_devices)
         fail_msg: |
           Device mismatch for {{ disk_config.mount_path }}:
-          Expected one of: {{ valid_devices }}
+          Expected: {{ '/dev/disk/by-uuid/...' if use_uuid else ('/dev/disk/by-id/... or ' + (valid_devices | to_json)) }}
           Actual: {{ matching_mount.device | default('not found') }}
           LVM enabled: {{ is_lvm }}
+          UUID enabled: {{ use_uuid }}
         success_msg: "✓ Device {{ matching_mount.device }} correctly mapped to {{ disk_config.mount_path }}"
 
     - name: Get all volume groups for LVM verification
@@ -117,8 +138,7 @@
           disks_partitions
         | selectattr('lvm', 'defined')
         | selectattr('lvm', 'equalto', true)
-        | map(attribute='lvm_vg_name')
-        | default(['data'])
+        | map(attribute='lvm_vg_name', default='data')
         | unique
         | list
         }}

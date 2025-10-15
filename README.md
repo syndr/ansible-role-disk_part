@@ -36,6 +36,9 @@ Role Variables
 #   - mount_path (required): The file system path at which to mount the partition
 #   - mount_type (optional): Method to use to mount the partition (fstab/systemd)
 #   - mount_options (optional): Options to be used when mounting the filesystem (string)
+#   - mount_uuid_path (optional): Mount by UUID instead of device path (true/false, default: true)
+#      * Automatically disabled for LVM volumes which use stable /dev/vg-name/lv-name paths
+#      * When enabled, mounts use /dev/disk/by-uuid/{uuid} for improved stability
 #   - resizefs (optional): Grow the filesystem to match the size of the block device (true/false)
 #      * not supported for swap format
 #   - state (optional): Existence of the partition
@@ -68,13 +71,14 @@ disks_partitions:
 
 # Default values ↓
 disks_partition_defaults:
-  format: ext4
+  format: btrfs
   format_options: ""
   mount_type: systemd
-  mount_options: ""
+  mount_options: defaults
+  mount_uuid_path: true
   force: false
   resizefs: false
-  state: present
+  state: mounted
   systemd_before: ""
   systemd_after: ""
   description: "Disk managed by Ansible"
@@ -85,6 +89,7 @@ disks_partition_defaults:
   lvm_pv_options: ""
   lvm_lv_options: ""
   lvm_pvresize: true
+  lvm_size_percent: 100
 ```
 
 > [!IMPORTANT]
@@ -113,6 +118,7 @@ Example configuration using a traditional `/etc/fstab` mount:
             mount_path: /mnt/test
             mount_type: fstab
             mount_options: defaults,noatime
+            mount_uuid_path: true  # Mounts using /dev/disk/by-uuid/{uuid}
 ```
 
 Example configuration using a systemd mount unit:  
@@ -129,6 +135,60 @@ Example configuration using a systemd mount unit:
             format: ext4
             mount_path: /mnt/test
             mount_type: systemd
+```
+
+Example configuration with LVM:
+```yaml.ansible
+- name: Make the disks with LVM
+  hosts: all
+  tasks:
+    - name: Configure disks
+      ansible.builtin.include_role:
+        name: disks
+      vars:
+        disks_partitions:
+          - device: /dev/sdf
+            format: xfs
+            mount_path: /mnt/data
+            mount_type: systemd
+            lvm: true
+            lvm_vg_name: data
+            lvm_lv_name: storage
+            # mount_uuid_path automatically set to false for LVM
+```
+
+Ansible Facts
+-------------
+
+This role saves disk configuration to `/etc/ansible/facts.d/disk_part.fact` on the target host. The facts include:
+
+- All configuration parameters for each disk
+- UUID value for non-LVM disks (when `mount_uuid_path: true`)
+- Actual device paths used for mounting
+
+Example fact data:
+```json
+[
+  {
+    "device": "/dev/disk/by-uuid/5f2c38d2-c5d5-47cd-a2e9-2f023294b4d0",
+    "uuid": "5f2c38d2-c5d5-47cd-a2e9-2f023294b4d0",
+    "format": "ext4",
+    "mount_path": "/mnt/test",
+    "mount_type": "fstab",
+    "mount_uuid_path": true,
+    "lvm": false
+  },
+  {
+    "device": "/dev/vg-data/lv-storage",
+    "format": "xfs",
+    "mount_path": "/mnt/data",
+    "mount_type": "systemd",
+    "mount_uuid_path": false,
+    "lvm": true,
+    "lvm_vg_name": "data",
+    "lvm_lv_name": "storage"
+  }
+]
 ```
 
 License

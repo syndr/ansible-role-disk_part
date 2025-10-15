@@ -29,6 +29,7 @@
           - "!all"
           - "!min"
           - distribution
+          - local
 
     - name: Add compatibility options for legacy OS
       tags: always
@@ -38,11 +39,33 @@
       ansible.builtin.set_fact:
         ansible_python_interpreter: /usr/local/bin/python3.10
 
-    - name: Load disks role
-      # Configuration vars are specified in molecule.yml hostvars
+    - name: Validate discovered disk facts exist
       tags: always
+      ansible.builtin.assert:
+        that:
+          - ansible_local.molecule_disks is defined
+          - ansible_local.molecule_disks.fstab_disk is defined
+          - ansible_local.molecule_disks.lvm_disk is defined
+        fail_msg: "Discovered disk facts not found. Did prepare.yml run successfully?"
+        success_msg: "Using discovered disks: fstab={{ ansible_local.molecule_disks.fstab_disk }}, lvm={{ ansible_local.molecule_disks.lvm_disk }}"
+
+    - name: Load disks role
+      tags: always
+      vars:
+        # Override molecule.yml hostvars with dynamically discovered devices
+        disks_partitions:
+          - device: "{{ ansible_local.molecule_disks.fstab_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/fstab_test
+            mount_type: fstab
+          - device: "{{ ansible_local.molecule_disks.lvm_disk }}"
+            format: xfs
+            lvm: true
+            mount_path: /mnt/lvm_test
+            mount_type: systemd
       ansible.builtin.include_role:
-        name: disks
+        name: disk_part
 
     - name: Create companion cube files for data integrity testing
       tags: 

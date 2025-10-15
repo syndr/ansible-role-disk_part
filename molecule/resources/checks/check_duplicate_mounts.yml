@@ -15,9 +15,9 @@
           - "mounts"
 
     - name: Find devices with duplicate mounts
-      loop: "{{ ansible_mounts | selectattr('device', 'search', '^/dev/') | list }}"
+      loop: "{{ ansible_facts.mounts | selectattr('device', 'search', '^/dev/') | list }}"
       when: >-
-        (ansible_mounts | selectattr('device', 'equalto', item.device) | list | length) > 1
+        (ansible_facts.mounts | selectattr('device', 'equalto', item.device) | list | length) > 1
         and item.device not in __ci_duplicate_mounts
       ansible.builtin.set_fact:
         __ci_duplicate_mounts: >-
@@ -31,7 +31,7 @@
         msg: |
           Found {{ __ci_duplicate_mounts | length }} device(s) with duplicate mounts:
           {% for device in __ci_duplicate_mounts %}
-          - {{ device }} is mounted at: {{ ansible_mounts | selectattr('device', 'equalto', device) | map(attribute='mount') | join(', ') }}
+          - {{ device }} is mounted at: {{ ansible_facts.mounts | selectattr('device', 'equalto', device) | map(attribute='mount') | join(', ') }}
           {% endfor %}
         verbosity: 1
 
@@ -54,5 +54,5 @@
     - name: Report duplicate mount check status
       ansible.builtin.debug:
         msg: >-
-          ✅ Duplicate mount check complete - verified {{ ansible_mounts | selectattr('device', 'search', '^/dev/') | list | length }}
+          ✅ Duplicate mount check complete - verified {{ ansible_facts.mounts | selectattr('device', 'search', '^/dev/') | list | length }}
           mounted devices have unique mount points

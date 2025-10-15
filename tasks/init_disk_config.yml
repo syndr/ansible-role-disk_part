@@ -16,6 +16,7 @@
       state: "{{ disks_item.state | default(disks_partition_defaults.state) }}"
       format_options: "{{ disks_item.format_options | default(disks_partition_defaults.format_options) }}"
       mount_options: "{{ disks_item.mount_options | default(disks_partition_defaults.mount_options) }}"
+      mount_uuid_path: "{{ disks_item.mount_uuid_path | default(disks_partition_defaults.mount_uuid_path) }}"
       lvm: "{{ disks_item.lvm | default(disks_partition_defaults.lvm) }}"
       lvm_vg_name: "{{ disks_item.lvm_vg_name | default(disks_partition_defaults.lvm_vg_name) }}"
       lvm_lv_name: "{{ disks_item.lvm_lv_name | default(disks_partition_defaults.lvm_vg_name) }}"
@@ -50,19 +51,24 @@
     path: "{{ disks_disk_config.device }}"
   register: disks_device_stat
 
-- name: Validate system status
+- name: Validate system status for non-absent disks
+  when: disks_disk_config.state != "absent"
   ansible.builtin.assert:
     that:
       - disks_device_stat.stat.islnk is defined
     fail_msg: 💥 Block device {{ disks_disk_config.device }} does not exist!
 
 - name: Load block device partition information
+  when:
+    - disks_device_stat.stat.exists | default(false)
+    - disks_device_stat.stat.islnk is defined
   ansible.builtin.command:
     cmd: "lsblk -J {{ disks_disk_config.device }}"
   register: __disks_lsblk_output
   changed_when: false
 
 - name: Parse block device partition information
+  when: __disks_lsblk_output is not skipped
   ansible.builtin.set_fact:
     __disks_device_blockdevices: "{{ (__disks_lsblk_output.stdout | from_json).blockdevices }}"
 
@@ -71,6 +77,7 @@
   when:
     - disks_disk_config.lvm
     - not disks_disk_config.force
+    - __disks_device_blockdevices is defined
     - __disks_device_blockdevices.children is defined
   ansible.builtin.assert:
     that:

@@ -15,7 +15,7 @@
             lvm_vg_name: munger9000
             lvm_lv_name: test
       ansible.builtin.include_role:
-        name: disks
+        name: disk_part
 
     - name: Fail if the role succeeded when it should have blocked
       ansible.builtin.fail:
@@ -26,7 +26,9 @@
       ansible.builtin.assert:
         that:
           - ansible_failed_result.msg is defined
-          - '"Device contains other LVM volume groups" in ansible_failed_result.msg'
+          - >-
+            "Device contains other LVM volume groups" in ansible_failed_result.msg or
+            "Device contains existing partitions" in ansible_failed_result.msg
           - '"force: true" in ansible_failed_result.msg'
         fail_msg: |
           Expected error message about existing LVM configuration not found.
