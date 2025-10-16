@@ -34,8 +34,8 @@
     - name: Add compatibility options for legacy OS
       tags: always
       when: >-
-        ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2' or
-        ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+        ansible_facts.distribution == 'Amazon' and ansible_facts.distribution_major_version == '2' or
+        ansible_facts.distribution == 'CentOS' and ansible_facts.distribution_major_version == '7'
       ansible.builtin.set_fact:
         ansible_python_interpreter: /usr/local/bin/python3.10
 
@@ -43,23 +43,25 @@
       tags: always
       ansible.builtin.assert:
         that:
-          - ansible_local.molecule_disks is defined
-          - ansible_local.molecule_disks.fstab_disk is defined
-          - ansible_local.molecule_disks.lvm_disk is defined
-        fail_msg: "Discovered disk facts not found. Did prepare.yml run successfully?"
-        success_msg: "Using discovered disks: fstab={{ ansible_local.molecule_disks.fstab_disk }}, lvm={{ ansible_local.molecule_disks.lvm_disk }}"
+          - ansible_facts.ansible_local.molecule_disks is defined
+          - ansible_facts.ansible_local.molecule_disks.fstab_disk is defined
+          - ansible_facts.ansible_local.molecule_disks.lvm_disk is defined
+        fail_msg: Discovered disk facts not found. Did prepare.yml run successfully?
+        success_msg: >-
+          Using discovered disks: fstab={{ ansible_facts.ansible_local.molecule_disks.fstab_disk }},
+            lvm={{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}
 
     - name: Load disks role
       tags: always
       vars:
         # Override molecule.yml hostvars with dynamically discovered devices
         disks_partitions:
-          - device: "{{ ansible_local.molecule_disks.fstab_disk }}"
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
             format: ext4
             lvm: false
             mount_path: /mnt/fstab_test
             mount_type: fstab
-          - device: "{{ ansible_local.molecule_disks.lvm_disk }}"
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
             format: xfs
             lvm: true
             mount_path: /mnt/lvm_test
@@ -85,7 +87,7 @@
       ansible.builtin.copy:
         content: |
           Test data integrity marker for {{ cube.mount }}
-          Created at: {{ ansible_date_time.iso8601 }}
+          Created at: {{ ansible_facts.date_time.iso8601 }}
           This companion cube should NOT be destroyed by validation tests!
           
           The enrichment center reminds you that the companion cube cannot speak.

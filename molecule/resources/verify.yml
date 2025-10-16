@@ -19,20 +19,20 @@
 
     - name: Add compatibility options for legacy OS
       when: >-
-        ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2' or
-        ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+        ansible_facts.distribution == 'Amazon' and ansible_facts.distribution_major_version == '2' or
+        ansible_facts.distribution == 'CentOS' and ansible_facts.distribution_major_version == '7'
       ansible.builtin.set_fact:
         ansible_python_interpreter: /usr/local/bin/python3.10
 
     - name: Load discovered disk configuration
       ansible.builtin.set_fact:
         disks_partitions:
-          - device: "{{ ansible_local.molecule_disks.fstab_disk }}"
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
             format: ext4
             lvm: false
             mount_path: /mnt/fstab_test
             mount_type: fstab
-          - device: "{{ ansible_local.molecule_disks.lvm_disk }}"
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
             format: xfs
             lvm: true
             mount_path: /mnt/lvm_test
@@ -61,7 +61,7 @@
         fail_msg: |
           Mount point {{ disk_config.mount_path }} is not mounted!
           Expected: {{ disk_config.mount_path }}
-          Current mounts: {{ ansible_mounts | map(attribute='mount') | list }}
+          Current mounts: {{ ansible_facts.mounts | map(attribute='mount') | list }}
         success_msg: "✓ Mount point {{ disk_config.mount_path }} is properly mounted"
 
     - name: Verify filesystem types for configured partitions
@@ -73,7 +73,7 @@
         loop_var: disk_config
         label: "{{ disk_config.mount_path | default('no mount path') }}"
       vars:
-        matching_mount: "{{ ansible_mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
+        matching_mount: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
         expected_format: "{{ disk_config.format | default('ext4') }}"
       ansible.builtin.assert:
         that:
@@ -93,7 +93,7 @@
         loop_var: disk_config
         label: "{{ disk_config.mount_path | default('no mount path') }}"
       vars:
-        matching_mount: "{{ ansible_mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
+        matching_mount: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
         is_lvm: "{{ disk_config.lvm | default(false) }}"
         use_uuid: "{{ disk_config.mount_uuid_path | default(false) }}"
         vg_name: "{{ disk_config.lvm_vg_name | default('data') }}"
@@ -108,7 +108,12 @@
           {%- endif -%}
       ansible.builtin.assert:
         that:
-          - (matching_mount.device is match('/dev/disk/by-uuid/.*')) if use_uuid else (matching_mount.device is match('/dev/disk/by-id/.*') or matching_mount.device in valid_devices)
+          - >-
+            (
+              matching_mount.device is match('/dev/disk/by-uuid/.*')) if use_uuid else (matching_mount.device is match('/dev/disk/by-id/.*')
+              or
+              matching_mount.device in valid_devices
+            )
         fail_msg: |
           Device mismatch for {{ disk_config.mount_path }}:
           Expected: {{ '/dev/disk/by-uuid/...' if use_uuid else ('/dev/disk/by-id/... or ' + (valid_devices | to_json)) }}
@@ -136,11 +141,11 @@
       loop: >-
         {{
           disks_partitions
-        | selectattr('lvm', 'defined')
-        | selectattr('lvm', 'equalto', true)
-        | map(attribute='lvm_vg_name', default='data')
-        | unique
-        | list
+          | selectattr('lvm', 'defined')
+          | selectattr('lvm', 'equalto', true)
+          | map(attribute='lvm_vg_name', default='data')
+          | unique
+          | list
         }}
       loop_control:
         loop_var: vg_name
@@ -163,7 +168,7 @@
               - mounts
 
         - name: Verify mount points have reasonable free space
-          loop: "{{ ansible_mounts | selectattr('mount', 'match', '^/mnt/.*') | list }}"
+          loop: "{{ ansible_facts.mounts | selectattr('mount', 'match', '^/mnt/.*') | list }}"
           loop_control:
             loop_var: mount_info
             label: "{{ mount_info.mount }}"
@@ -193,7 +198,7 @@
               Device: {{ disk_config.device }}
               Format: {{ disk_config.format | default('ext4') }}
               LVM: {{ disk_config.lvm | default(true) }}
-              Created: {{ ansible_date_time.iso8601 }}
+              Created: {{ ansible_facts.date_time.iso8601 }}
             dest: "{{ disk_config.mount_path }}/verify_test.txt"
             mode: '0644'
 
@@ -246,6 +251,6 @@
           No disks_partitions configuration found in hostvars
           {% endif %}
           
-          Total active mounts: {{ ansible_mounts | selectattr('mount', 'match', '^/mnt/.*') | list | length }}
+          Total active mounts: {{ ansible_facts.mounts | selectattr('mount', 'match', '^/mnt/.*') | list | length }}
           Companion cubes verified: {{ ci_companion_cubes | default([]) | length }}
           ============================================

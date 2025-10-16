@@ -51,7 +51,7 @@
               - "mounts"
 
         - name: Check for mount point overlap
-          loop: "{{ ansible_mounts | selectattr('mount', 'equalto', disks_disk_config.mount_path) | list }}"
+          loop: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', disks_disk_config.mount_path) | list }}"
           loop_control:
             label: item.mount
           ansible.builtin.set_fact:

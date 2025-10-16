@@ -19,13 +19,13 @@
 
     - name: Ensure volume group "{{ disks_disk_config.lvm_vg_name }}" exists with proper physical volumes
       vars:
-        __disks_existing_pvs: >
+        __disks_existing_pvs: >-
           {{
             (__disks_existing_vg_pvs.stdout_lines | map('trim') | list)
             if __disks_existing_vg_pvs.rc == 0 and __disks_existing_vg_pvs.stdout_lines | length > 0
             else []
           }}
-        __disks_target_pvs: >
+        __disks_target_pvs: >-
           {{
             (__disks_existing_pvs + [disks_disk_config.device]) | unique | sort
           }}

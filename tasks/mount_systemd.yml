@@ -24,6 +24,7 @@
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_disks.yml"
 
 - name: Configure disk mount
+  when: disks_disk_config.state in ['present', 'mounted']
   block:
     - name: Install disk mount systemd unit ({{ disks_systemd_filename }})
       become: true
@@ -58,7 +59,6 @@
       when:
         - disks_systemd_install_output is changed
         - disks_disk_config.state == 'mounted'
-  when: disks_disk_config.state in ['present', 'mounted']
 
 - name: Unmount disk
   become: true
@@ -66,15 +66,14 @@
     name: "{{ disks_systemd_filename }}"
     state: stopped
   when:
-    - disks_systemd_filename in services
+    - disks_systemd_filename in ansible_facts.services
     - disks_disk_config.state == "absent" or disks_disk_config.state == "unmounted"
 
 - name: Remove systemd unit
+  when: disks_disk_config.state == "absent"
   become: true
   ansible.builtin.file:
     path: /etc/systemd/system/{{ disks_systemd_filename }}
     state: absent
   notify:
     - Reload systemd service files
-  when: disks_disk_config.state == "absent"
-

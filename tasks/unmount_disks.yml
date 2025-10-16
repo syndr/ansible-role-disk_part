@@ -12,7 +12,7 @@
     - name: Duplicate device mounts detected
       ansible.builtin.assert:
         that:
-          - disks_allow_mountpoint_changes | default(true) | bool
+          - disks_allow_mountpoint_changes | default(true) is true
         fail_msg: |
           ❌ Duplicate mounts detected for device {{ __disks_device_canonical }}:
           {% for mount in __disks_duplicate_mounts %}
@@ -71,7 +71,7 @@
           register: __disks_duplicate_systemd_units_removal
 
         - name: Reload systemd daemon (units removed)
-          when: __disks_duplicate_systemd_units_removal | default(false) | bool
+          when: __disks_duplicate_systemd_units_removal | default(false) is truthy
           become: true
           ansible.builtin.systemd_service:
             daemon_reload: true

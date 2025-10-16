@@ -7,6 +7,10 @@
   ansible.builtin.package:
     name: lvm2
     state: present
+  register: __disks_package_result
+  retries: 5
+  delay: 10
+  until: "'Failed to download metadata for repo' not in (__disks_package_result.msg | default(''))"
 
 - name: Gather partition information for target disk
   become: true
