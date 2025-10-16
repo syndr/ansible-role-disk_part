@@ -4,11 +4,6 @@
 - name: Initialize role
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/init.yml"
 
-- name: Validate configuration
-  ansible.builtin.assert:
-    that:
-      - disks_partitions | type_debug == 'list'
-
 - name: Load host facts
   ansible.builtin.setup:
     gather_subset:

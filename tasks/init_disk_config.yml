@@ -47,6 +47,9 @@
       - ((disks_disk_config.lvm_vg_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
       - ((disks_disk_config.lvm_pv_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
       - ((disks_disk_config.lvm_lv_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
+      - (disks_disk_config.mount_uuid_path in [True, False])
+      - (disks_disk_config.format != 'swap') or (not disks_disk_config.resizefs | default(false))
+      - (disks_disk_config.lvm_size_percent | int >= 1 and disks_disk_config.lvm_size_percent | int <= 100)
     fail_msg: "Incorrect configuration specified for disk: {{ disks_disk_config.mount_path | default('Mount path undefined') }}"
 
 - name: Check for block device {{ disks_disk_config.device }}
