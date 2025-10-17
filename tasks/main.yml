@@ -4,33 +4,37 @@
 - name: Initialize role
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/init.yml"
 
-- name: Load host facts
+- name: Load host mount facts
   ansible.builtin.setup:
     gather_subset:
       - mounts
 
-- name: Manage disk
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/manage_disk.yml"
-  loop: "{{ disks_partitions }}"
-  loop_control:
-    loop_var: disks_item
-    label: disks_item.mount_path | default('invalid')
-
-- name: Save disk facts
-  become: true
+- name: Configure disks
   block:
-    - name: Ansible facts directory exists
-      ansible.builtin.file:
-        path: /etc/ansible/facts.d
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
+    - name: Manage disk
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/manage_disk.yml"
+      loop: "{{ disks_partitions }}"
+      loop_control:
+        loop_var: disks_item
+        label: disks_item.mount_path | default('invalid')
 
-    - name: Write disk configuration fact
-      ansible.builtin.copy:
-        dest: /etc/ansible/facts.d/disk_part.fact
-        content: "{{ disks_fact_data | to_nice_json }}"
-        owner: root
-        group: root
-        mode: '0644'
+  always:
+    - name: Save disk facts
+      become: true
+      when: disks_fact_data is defined
+      block:
+        - name: Ansible facts directory exists
+          ansible.builtin.file:
+            path: /etc/ansible/facts.d
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Write disk configuration fact
+          ansible.builtin.copy:
+            dest: /etc/ansible/facts.d/disk_part.fact
+            content: "{{ disks_fact_data | to_nice_json }}"
+            owner: root
+            group: root
+            mode: '0644'

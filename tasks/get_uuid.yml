@@ -5,9 +5,6 @@
 
 - name: Get UUID for {{ disks_disk_config.device }}
   become: true
-  when:
-    - not disks_disk_config.lvm
-    - not (disks_disk_config.device.startswith('/dev/disk/by-uuid/') or disks_disk_config.device.startswith('/dev/disk/by-id/'))
   ansible.builtin.command:
     cmd: "blkid -s UUID -o value {{ disks_disk_config.device }}"
   register: __disks_blkid_output
@@ -16,7 +13,6 @@
   failed_when: false
 
 - name: Validate UUID was retrieved
-  when: __disks_blkid_output is not skipped
   ansible.builtin.assert:
     that:
       - __disks_blkid_output.rc == 0
@@ -26,17 +22,62 @@
     success_msg: "UUID for device {{ disks_disk_config.device }} is {{ __disks_blkid_output.stdout | trim }}"
 
 - name: Update device path to use UUID
-  when:
-    - __disks_blkid_output is not skipped
-    - __disks_blkid_output.rc == 0
-    - __disks_blkid_output.stdout is defined
-    - __disks_blkid_output.stdout | length > 0
   ansible.builtin.set_fact:
     disks_disk_config: >-
       {{
         disks_disk_config
         | combine({
-          'device': '/dev/disk/by-uuid/' ~ (__disks_blkid_output.stdout | trim),
-          'uuid': __disks_blkid_output.stdout | trim
+          'kernel_device': disks_disk_config.device,
+          'base_device_uuid': __disks_blkid_output.stdout | trim
         })
       }}
+
+- name: Discover LVM volume UUID
+  vars:
+    __disks_is_target_lv: >-
+      {{ disks_disk_config.lvm is true and
+         disks_disk_config.device == '/dev/vg-' + disks_disk_config.lvm_vg_name + '/lv-' + disks_disk_config.lvm_lv_name }}
+  when: __disks_is_target_lv
+  block:
+    - name: Collect LVM LV UUID (if lvs available)
+      block:
+        - name: Check for lvs command
+          ansible.builtin.command:
+            cmd: "command -v lvs"
+          register: __disks_lvs_cmd_check
+          changed_when: false
+          failed_when: false
+
+        - name: Get UUID for LVM volume {{ disks_disk_config.device }}
+          when: __disks_lvs_cmd_check.rc == 0
+          become: true
+          ansible.builtin.command:
+            cmd: "lvs --noheadings -o lv_uuid {{ disks_disk_config.device }}"
+          register: __disks_lvm_uuid_output
+          changed_when: false
+          failed_when: false
+
+        - name: Validate and store LVM UUID
+          when:
+            - __disks_lvs_cmd_check.rc == 0
+            - __disks_lvm_uuid_output.rc == 0
+            - __disks_lvm_uuid_output.stdout is defined
+            - __disks_lvm_uuid_output.stdout | length > 0
+          block:
+            - name: Validate LVM UUID was retrieved
+              ansible.builtin.assert:
+                that:
+                  - __disks_lvm_uuid_output.stdout | length > 0
+                fail_msg: "Could not determine LVM UUID for volume {{ disks_disk_config.device }}"
+                success_msg: >-
+                  LVM UUID for volume {{ disks_disk_config.device }} is {{ __disks_lvm_uuid_output.stdout | trim }}
+
+            - name: Update device path to include LVM UUID
+              ansible.builtin.set_fact:
+                disks_disk_config: >-
+                  {{
+                    disks_disk_config
+                    | combine({
+                      'lvm_lv_uuid': __disks_lvm_uuid_output.stdout | trim
+                    })
+                  }}

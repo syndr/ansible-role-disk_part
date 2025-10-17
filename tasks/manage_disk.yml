@@ -5,69 +5,77 @@
 - name: Priming the blasters!
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/init_disk_config.yml"
 
+- name: Checking target coordinates
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/check_state.yml"
+
+- name: Store initial disk configuration facts
+  ansible.builtin.set_fact:
+    __disks_fact_record: "{{ disks_disk_config }}"
+    __disks_original_device: "{{ disks_disk_config.device }}"
+
 - name: Things to do only if a disk is present (not to be removed)
+  # Volumes are unmounted and not formatted if state is "absent"
   when: disks_disk_config.state != "absent"
   vars:
-    __disks_original_device: "{{ disks_disk_config.device }}"
+    __disks_disk_uuid_path: >-
+      {{
+        '/dev/disk/by-uuid/' ~ disks_disk_config.lvm_lv_uuid | default(disks_disk_config.base_device_uuid, true)
+        if ((disks_disk_config.base_device_uuid is defined or disks_disk_config.lvm_lv_uuid is defined)
+            and (disks_disk_config.base_device_uuid | length > 0 or disks_disk_config.lvm_lv_uuid | length > 0)
+            and disks_disk_config.mount_uuid_path | default(false))
+        else
+        none
+      }}
+    __disks_disk_runtime_device: >-
+      {{
+        __disks_disk_uuid_path
+        if __disks_disk_uuid_path is truthy
+        else
+        disks_disk_config.device
+      }}
+    __disks_disk_load_uuid_needed: >-
+      {{
+        disks_disk_config.mount_uuid_path | default(false)
+        and not (
+          disks_disk_config.device.startswith('/dev/disk/by-uuid/')
+          or
+          disks_disk_config.device.startswith('/dev/disk/by-id/')
+        )
+      }}
   block:
-    - name: Checking target coordinates
-      ansible.builtin.include_tasks: "{{ role_path }}/tasks/check_state.yml"
+    - name: Get disk UUID
+      when: __disks_disk_load_uuid_needed
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
 
     - name: Configure LVM
-      when: disks_disk_config.lvm
-      ansible.builtin.include_tasks: "{{ role_path }}/tasks/lvm.yml"
+      when: disks_disk_config.lvm is true
+      block:
+        - name: Manage LVM volumes
+          ansible.builtin.include_tasks: "{{ role_path }}/tasks/lvm.yml"
+
+        - name: Load updated UUID
+          when: __disks_disk_load_uuid_needed
+          ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
 
     - name: Configure filesystem for {{ disks_disk_config.device }}
       become: true
       community.general.filesystem:
-        dev: "{{ disks_disk_config.device }}"
+        dev: "{{ __disks_disk_runtime_device }}"
         fstype: "{{ disks_disk_config.format }}"
         force: "{{ disks_disk_config.force }}"
         opts: "{{ disks_disk_config.format_options }}"
         resizefs: "{{ disks_disk_config.resizefs }}"
         state: present
 
-    - name: Get disk UUID
-      when: disks_disk_config.mount_uuid_path | default(false)
-      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
-
-    - name: Store disk configuration fact
+    - name: Update disk configuration with UUID path
       vars:
-        __disks_fact_record: >-
+        __disks_fact_record_update: >-
           {{
             disks_disk_config
             | combine({'device': __disks_original_device})
           }}
       ansible.builtin.set_fact:
-        disks_fact_data: "{{ disks_fact_data + [ __disks_fact_record ] }}"
-
-    - name: Unmount conflicting partitions
-      when: disks_disk_config.force
-      block:
-        - name: Collect mounted disk information
-          ansible.builtin.setup:
-            gather_subset:
-              - "!all"
-              - "mounts"
-
-        - name: Check for mount point overlap
-          loop: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', disks_disk_config.mount_path) | list }}"
-          loop_control:
-            label: item.mount
-          ansible.builtin.set_fact:
-            disks_current_matching_mount: "{{ item }}"
-
-        - name: Unmount overlapping partition
-          become: true
-          ansible.posix.mount:
-            path: "{{ disks_disk_config.mount_path }}"
-            state: absent
-          when:
-            - disks_current_matching_mount is defined
-            - >-
-              disks_current_matching_mount.device != disks_disk_config.device
-              or
-              disks_current_matching_mount.fstype != disks_disk_config.format
+        __disks_fact_record: "{{ __disks_fact_record | combine(__disks_fact_record_update) }}"
 
 - name: Configure systemd mount
   when: disks_disk_config.mount_type == "systemd"
@@ -76,3 +84,7 @@
 - name: Configure fstab mount
   when: disks_disk_config.mount_type == "fstab"
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/mount_fstab.yml"
+
+- name: Store disk configuration fact
+  ansible.builtin.set_fact:
+    disks_fact_data: "{{ disks_fact_data + [ __disks_fact_record ] }}"
