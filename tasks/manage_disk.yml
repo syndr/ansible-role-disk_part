@@ -26,46 +26,48 @@
           disks_disk_config.device.startswith('/dev/disk/by-id/')
         )
       }}
-    __disks_disk_runtime_device: >-
-      {{
-        disks_disk_config.device
-      }}
+    # Always use the original device path for filesystem operations
+    __disks_filesystem_device: >-
+      {{ disks_disk_config.device }}
   block:
-    - name: Resolve device paths based on mount_path_type
-      when: __disks_disk_needs_path_resolution
-      block:
-        - name: Get disk UUID
-          when: disks_disk_config.mount_path_type in ['uuid', 'auto']
-          ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
-
-        - name: Get disk ID
-          when: disks_disk_config.mount_path_type in ['id', 'auto']
-          ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
+    - name: Pre-format device ID discovery (for blank disks)
+      when:
+        - __disks_disk_needs_path_resolution
+        - disks_disk_config.mount_path_type in ['id', 'auto']
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
 
     - name: Configure LVM
       when: disks_disk_config.lvm is true
-      block:
-        - name: Manage LVM volumes
-          ansible.builtin.include_tasks: "{{ role_path }}/tasks/lvm.yml"
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/lvm.yml"
 
-        - name: Load updated device paths after LVM setup
-          when: __disks_disk_needs_path_resolution
-          block:
-            - name: Get updated UUID
-              when: disks_disk_config.mount_path_type in ['uuid', 'auto']
-              ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
+    - name: Configure filesystem for {{ disks_disk_config.device }}
+      become: true
+      community.general.filesystem:
+        dev: "{{ __disks_filesystem_device }}"
+        fstype: "{{ disks_disk_config.format }}"
+        force: "{{ disks_disk_config.force }}"
+        opts: "{{ disks_disk_config.format_options }}"
+        resizefs: "{{ disks_disk_config.resizefs }}"
+        state: present
 
-            - name: Get updated device ID
-              when: disks_disk_config.mount_path_type in ['id', 'auto']
-              ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
+    - name: Post-format path resolution (get filesystem UUIDs)
+      when:
+        - __disks_disk_needs_path_resolution
+        - disks_disk_config.mount_path_type in ['uuid', 'auto']
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
 
-    - name: Determine runtime device path
+    - name: Post-format device ID discovery (for formatted LVM volumes)
+      when:
+        - __disks_disk_needs_path_resolution
+        - disks_disk_config.mount_path_type in ['id', 'auto']
+        - disks_disk_config.lvm is true
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
+
+    - name: Determine final mount device path
       ansible.builtin.set_fact:
         __disks_disk_runtime_device: >-
           {%- if disks_disk_config.mount_path_type == 'uuid' and disks_disk_config.base_device_uuid is defined -%}
             /dev/disk/by-uuid/{{ disks_disk_config.base_device_uuid }}
-          {%- elif disks_disk_config.mount_path_type == 'uuid' and disks_disk_config.lvm_lv_uuid is defined -%}
-            /dev/disk/by-uuid/{{ disks_disk_config.lvm_lv_uuid }}
           {%- elif disks_disk_config.mount_path_type == 'id' and disks_disk_config.device_id_path is defined -%}
             {{ disks_disk_config.device_id_path }}
           {%- elif disks_disk_config.mount_path_type == 'id' and disks_disk_config.lvm_device_id_path is defined -%}
@@ -73,8 +75,6 @@
           {%- elif disks_disk_config.mount_path_type == 'auto' -%}
             {%- if disks_disk_config.base_device_uuid is defined -%}
               /dev/disk/by-uuid/{{ disks_disk_config.base_device_uuid }}
-            {%- elif disks_disk_config.lvm_lv_uuid is defined -%}
-              /dev/disk/by-uuid/{{ disks_disk_config.lvm_lv_uuid }}
             {%- elif disks_disk_config.device_id_path is defined -%}
               {{ disks_disk_config.device_id_path }}
             {%- elif disks_disk_config.lvm_device_id_path is defined -%}
@@ -86,23 +86,13 @@
             {{ disks_disk_config.device }}
           {%- endif -%}
 
-    - name: Configure filesystem for {{ disks_disk_config.device }}
-      become: true
-      community.general.filesystem:
-        dev: "{{ __disks_disk_runtime_device }}"
-        fstype: "{{ disks_disk_config.format }}"
-        force: "{{ disks_disk_config.force }}"
-        opts: "{{ disks_disk_config.format_options }}"
-        resizefs: "{{ disks_disk_config.resizefs }}"
-        state: present
-
     - name: Update disk configuration with resolved paths
       vars:
         __disks_fact_record_update: >-
           {{
             disks_disk_config
             | combine({
-              'device': __disks_runtime_device,
+              'device': __disks_disk_runtime_device,
               'original_device': __disks_original_device,
               'runtime_device': __disks_disk_runtime_device
             })
