@@ -17,7 +17,11 @@
 #   - mount_path (required): The file system path at which to mount the partition
 #   - mount_type (optional): Method to use to mount the partition (fstab/systemd)
 #   - mount_options (optional): Options to be used when mounting the filesystem (string)
-#   - mount_uuid_path (optional): Use UUID path instead of device path (IE /dev/sdx) for mounting (true/false)
+#   - mount_path_type (optional): Type of persistent device path to use (device/uuid/id/auto, default: auto)
+#      * device: Use raw device path (e.g., /dev/sdb1)
+#      * uuid: Use /dev/disk/by-uuid/ path (requires filesystem with UUID)
+#      * id: Use /dev/disk/by-id/ path (hardware-based identifier)
+#      * auto: Try uuid first, fallback to id, then device (recommended for most cases)
 #   - resizefs (optional): Grow the filesystem to match the size of the block device (true/false)
 #      * not supported for swap format
 #   - state (optional): Existence of the partition (present/absent)
@@ -58,7 +62,7 @@ disks_partition_defaults:
   format_options: ""
   mount_type: systemd
   mount_options: defaults
-  mount_uuid_path: true
+  mount_path_type: auto
   force: false
   resizefs: false
   state: mounted

@@ -56,16 +56,20 @@
       vars:
         # Override molecule.yml hostvars with dynamically discovered devices
         disks_partitions:
+          # Test auto mode with fstab (should gracefully handle blank disk)
           - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
             format: ext4
             lvm: false
             mount_path: /mnt/fstab_test
             mount_type: fstab
+            mount_path_type: auto
+          # Test auto mode with LVM (should work with blank disk)
           - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
             format: xfs
             lvm: true
             mount_path: /mnt/lvm_test
             mount_type: systemd
+            mount_path_type: auto
       ansible.builtin.include_role:
         name: disk_part
 

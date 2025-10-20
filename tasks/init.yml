@@ -27,20 +27,21 @@
     - name: Validate partition count
       vars:
         __disks_unique_devices: "{{ disks_partitions | map(attribute='device') | unique | list }}"
+        __disks_partitions_dupes: >-
+          {{ disks_partitions
+            | map(attribute='device')
+            | groupby('device')
+            | selectattr('1', 'length', '>', 1)
+            | map(attribute='0')
+            | list | join(', ')
+          }}
       ansible.builtin.assert:
         that:
           - __disks_unique_devices | length == disks_partitions | length
         fail_msg: >-
           Each partition entry must have a unique 'device' value.
           Multi-partition device configuration is not presently supported.
-          Multiple entries found for:
-            {{ disks_partitions
-              | map(attribute='device')
-              | groupby('device')
-              | selectattr('1', 'length', '>', 1)
-              | map(attribute='0')
-              | list | join(', ')
-            }}
+          Multiple entries found for: {{ __disks_partitions_dupes | default('UNDEFINED') }}
         success_msg: "✓ All partition entries have unique 'device' values."
 
 # Per-item validation occurs in init_disk_config.yml after defaults merge; only list-level checks kept here.

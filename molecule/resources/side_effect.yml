@@ -68,6 +68,83 @@
           - /mnt/lvm_test_new/companion_cube.txt
       ansible.builtin.include_tasks: checks/verify_data_integrity.yml
 
+- name: Test mount_path_type variations
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Load system facts for additional disk discovery
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - "!min"
+          - local
+
+    - name: Test mount_path_type uuid mode (on formatted disk)
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
+            format: btrfs
+            lvm: false
+            mount_path: /mnt/uuid_test
+            mount_type: systemd
+            mount_path_type: uuid
+            state: mounted
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Test mount_path_type id mode
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.id_disk }}"
+            format: xfs
+            lvm: false
+            mount_path: /mnt/id_test
+            mount_type: systemd
+            mount_path_type: id
+            state: mounted
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Verify mount_path_type test mounts are working
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Create test files in additional mount points
+      become: true
+      loop:
+        - /mnt/uuid_test/uuid_test.txt
+        - /mnt/id_test/id_test.txt
+      ansible.builtin.copy:
+        content: |
+          Mount path type test file
+          Created at: {{ ansible_facts.date_time.iso8601 }}
+          Mount point: {{ item | dirname }}
+        dest: "{{ item }}"
+        mode: '0644'
+
+    - name: Clean up additional test mounts for verify phase
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
+            format: btrfs
+            lvm: false
+            mount_path: /mnt/uuid_test
+            mount_type: systemd
+            mount_path_type: uuid
+            state: absent
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.id_disk }}"
+            format: xfs
+            lvm: false
+            mount_path: /mnt/id_test
+            mount_type: systemd
+            mount_path_type: id
+            state: absent
+      ansible.builtin.include_role:
+        name: disk_part
+
 - name: Re-run with default configuration (match expected for 'verify' phase)
   hosts: molecule
   vars:
@@ -83,10 +160,12 @@
             lvm: false
             mount_path: /mnt/fstab_test
             mount_type: fstab
+            mount_path_type: auto
           - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
             format: xfs
             lvm: true
             mount_path: /mnt/lvm_test
             mount_type: systemd
+            mount_path_type: auto
       ansible.builtin.include_role:
         name: disk_part

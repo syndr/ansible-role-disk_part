@@ -38,7 +38,7 @@ Each item under `disks_partitions` supports:
 - format_options
 - mount_type (systemd|fstab) default systemd
 - mount_options (defaults)
-- mount_uuid_path (bool, default true except LVM)
+- mount_path_type (device|uuid|id|auto, default auto)
 - description
 - force (bool)
 - resizefs (bool) (not for swap)
@@ -69,7 +69,10 @@ Contains merged per-disk configuration (post UUID/LVM resolution). Agents readin
 
 ## Detection Heuristics for Agents
 - Presence of `lvm: true` -> treat device as PV; final mount path device will become /dev/vg-name/lv-name.
-- If `mount_uuid_path: true` and not LVM -> prefer /dev/disk/by-uuid reference (stable path).
+- If `mount_path_type: uuid` -> prefer /dev/disk/by-uuid reference (filesystem-based, changes on reformat)
+- If `mount_path_type: id` -> prefer /dev/disk/by-id reference (hardware-based, survives reformatting)
+- If `mount_path_type: auto` -> try uuid first, fallback to id, then device
+- If `mount_path_type: device` -> use raw device path (e.g., /dev/sdb1)
 - If fact records show differing device vs requested config device, migration may be incomplete.
 
 ## Change Impact Assessment (use CHANGELOG)
@@ -109,7 +112,7 @@ Potential failure points:
     "format_options": "string",
     "mount_type": {"enum": ["systemd", "fstab"], "default": "systemd"},
     "mount_options": {"type": "string", "default": "defaults"},
-    "mount_uuid_path": {"type": "boolean", "default": true},
+    "mount_path_type": {"enum": ["device", "uuid", "id", "auto"], "default": "auto"},
     "description": "string",
     "force": {"type": "boolean", "default": false},
     "resizefs": {"type": "boolean", "default": false},

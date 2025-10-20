@@ -7,26 +7,36 @@ flowchart TD
 
   subgraph ManageDisk
     E --> E1[init_disk_config.yml merge defaults validate item]
-    E1 --> E2[check_state.yml safety]
+    E1 --> E1a[Validate device path matches mount_path_type]
+    E1a --> E2[check_state.yml safety]
     E2 --> E3{state != absent?}
     E3 -->|No| Eskip((Skip provisioning))
     E3 -->|Yes| Pstart[Provision]
     subgraph Provision
-      Pstart --> U1{Need base UUID pre-LVM?}
-      U1 -->|Yes| U2[get_uuid blkid]
-      U1 -->|No| U3[Proceed to LVM/filesystem]
+      Pstart --> PathRes{Need path resolution?}
+      PathRes -->|Yes| PathType{mount_path_type}
+      PathType -->|uuid/auto| U2[get_uuid blkid]
+      PathType -->|id/auto| I2[get_device_id by-id discovery]
+      PathType -->|device| U3[Use original device path]
       U2 --> U3
+      I2 --> U3
+      PathRes -->|No| U3
       U3 --> LVM{lvm?}
       LVM -->|Yes| L1[lvm.yml ensure VG/LV set /dev/vg-/lv-]
-      L1 --> U4{Need UUID after LVM?}
-      U4 -->|Yes| U5[get_uuid blkid+lvs]
-      U4 -->|No| U6[Skip LV UUID]
-      U5 -->FS
+      L1 --> PathRes2{Need path resolution after LVM?}
+      PathRes2 -->|Yes| PathType2{mount_path_type}
+      PathType2 -->|uuid/auto| U5[get_uuid blkid+lvs]
+      PathType2 -->|id/auto| I5[get_device_id LVM by-id]
+      PathType2 -->|device| U6[Use LV device path]
+      U5 --> U6
+      I5 --> U6
+      PathRes2 -->|No| U6
       LVM -->|No| U6
-      U6 --> FS[Format filesystem]
-      FS -->|Use GUID path| FAct[Update fact record]
+      U6 --> Runtime[Determine runtime device path]
+      Runtime --> FS[Format filesystem]
+      FS --> FAct[Update fact record with resolved paths]
     end
-    FAct --> MountSel[Select runtime device]
+    FAct --> MountSel[Use runtime device for mount]
     Eskip --> MountSel
     MountSel --> MType{mount_type}
     MType -->|systemd| Sys[mount_systemd.yml unit ops]
@@ -42,10 +52,15 @@ flowchart TD
   E2 -->|safety fail| Fail[[Abort]]
   FS -->|use kernel dev path| MountSel
 
+  Note1[Molecule tests validate: auto, uuid, id, device modes]
+  Note1 -.-> PathType
+  Note1 -.-> PathType2
+
   classDef decision fill:#334155,stroke:#3b82f6,color:#f8fafc;
   classDef action fill:#1e3a8a,stroke:#3b82f6,color:#f8fafc;
   classDef terminal fill:#0f172a,stroke:#f43f5e,color:#f8fafc;
   classDef data fill:#475569,stroke:#94a3b8,color:#f8fafc;
-  class A,B,C,D,E,E1,E2,E3,Pstart,U2,U3,L1,U5,FS,FAct,MountSel,MType,Sys,Fstab,Dup,FinalFact,SaveBlock,Save action;
-  class U1,U4,LVM decision;
+  class A,B,C,D,E,E1,E1a,E2,E3,Pstart,U2,U3,L1,U5,U6,I2,I5,Runtime,FS,FAct,MountSel,MType,Sys,Fstab,Dup,FinalFact,SaveBlock,Save action;
+  class Note1 data;
+  class PathRes,PathType,PathRes2,PathType2,LVM decision;
   class Eskip,Fail terminal;

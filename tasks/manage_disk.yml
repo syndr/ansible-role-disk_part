@@ -17,35 +17,30 @@
   # Volumes are unmounted and not formatted if state is "absent"
   when: disks_disk_config.state != "absent"
   vars:
-    __disks_disk_uuid_path: >-
+    __disks_disk_needs_path_resolution: >-
       {{
-        '/dev/disk/by-uuid/' ~ disks_disk_config.lvm_lv_uuid | default(disks_disk_config.base_device_uuid, true)
-        if ((disks_disk_config.base_device_uuid is defined or disks_disk_config.lvm_lv_uuid is defined)
-            and (disks_disk_config.base_device_uuid | length > 0 or disks_disk_config.lvm_lv_uuid | length > 0)
-            and disks_disk_config.mount_uuid_path | default(false))
-        else
-        none
-      }}
-    __disks_disk_runtime_device: >-
-      {{
-        __disks_disk_uuid_path
-        if __disks_disk_uuid_path is truthy
-        else
-        disks_disk_config.device
-      }}
-    __disks_disk_load_uuid_needed: >-
-      {{
-        disks_disk_config.mount_uuid_path | default(false)
+        disks_disk_config.mount_path_type in ['uuid', 'id', 'auto']
         and not (
           disks_disk_config.device.startswith('/dev/disk/by-uuid/')
           or
           disks_disk_config.device.startswith('/dev/disk/by-id/')
         )
       }}
+    __disks_disk_runtime_device: >-
+      {{
+        disks_disk_config.device
+      }}
   block:
-    - name: Get disk UUID
-      when: __disks_disk_load_uuid_needed
-      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
+    - name: Resolve device paths based on mount_path_type
+      when: __disks_disk_needs_path_resolution
+      block:
+        - name: Get disk UUID
+          when: disks_disk_config.mount_path_type in ['uuid', 'auto']
+          ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
+
+        - name: Get disk ID
+          when: disks_disk_config.mount_path_type in ['id', 'auto']
+          ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
 
     - name: Configure LVM
       when: disks_disk_config.lvm is true
@@ -53,9 +48,43 @@
         - name: Manage LVM volumes
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/lvm.yml"
 
-        - name: Load updated UUID
-          when: __disks_disk_load_uuid_needed
-          ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
+        - name: Load updated device paths after LVM setup
+          when: __disks_disk_needs_path_resolution
+          block:
+            - name: Get updated UUID
+              when: disks_disk_config.mount_path_type in ['uuid', 'auto']
+              ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
+
+            - name: Get updated device ID
+              when: disks_disk_config.mount_path_type in ['id', 'auto']
+              ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
+
+    - name: Determine runtime device path
+      ansible.builtin.set_fact:
+        __disks_disk_runtime_device: >-
+          {%- if disks_disk_config.mount_path_type == 'uuid' and disks_disk_config.base_device_uuid is defined -%}
+            /dev/disk/by-uuid/{{ disks_disk_config.base_device_uuid }}
+          {%- elif disks_disk_config.mount_path_type == 'uuid' and disks_disk_config.lvm_lv_uuid is defined -%}
+            /dev/disk/by-uuid/{{ disks_disk_config.lvm_lv_uuid }}
+          {%- elif disks_disk_config.mount_path_type == 'id' and disks_disk_config.device_id_path is defined -%}
+            {{ disks_disk_config.device_id_path }}
+          {%- elif disks_disk_config.mount_path_type == 'id' and disks_disk_config.lvm_device_id_path is defined -%}
+            {{ disks_disk_config.lvm_device_id_path }}
+          {%- elif disks_disk_config.mount_path_type == 'auto' -%}
+            {%- if disks_disk_config.base_device_uuid is defined -%}
+              /dev/disk/by-uuid/{{ disks_disk_config.base_device_uuid }}
+            {%- elif disks_disk_config.lvm_lv_uuid is defined -%}
+              /dev/disk/by-uuid/{{ disks_disk_config.lvm_lv_uuid }}
+            {%- elif disks_disk_config.device_id_path is defined -%}
+              {{ disks_disk_config.device_id_path }}
+            {%- elif disks_disk_config.lvm_device_id_path is defined -%}
+              {{ disks_disk_config.lvm_device_id_path }}
+            {%- else -%}
+              {{ disks_disk_config.device }}
+            {%- endif -%}
+          {%- else -%}
+            {{ disks_disk_config.device }}
+          {%- endif -%}
 
     - name: Configure filesystem for {{ disks_disk_config.device }}
       become: true
@@ -67,15 +96,20 @@
         resizefs: "{{ disks_disk_config.resizefs }}"
         state: present
 
-    - name: Update disk configuration with UUID path
+    - name: Update disk configuration with resolved paths
       vars:
         __disks_fact_record_update: >-
           {{
             disks_disk_config
-            | combine({'device': __disks_original_device})
+            | combine({
+              'device': __disks_runtime_device,
+              'original_device': __disks_original_device,
+              'runtime_device': __disks_disk_runtime_device
+            })
           }}
       ansible.builtin.set_fact:
         __disks_fact_record: "{{ __disks_fact_record | combine(__disks_fact_record_update) }}"
+        disks_disk_config: "{{ disks_disk_config | combine({'device': __disks_disk_runtime_device}) }}"
 
 - name: Configure systemd mount
   when: disks_disk_config.mount_type == "systemd"

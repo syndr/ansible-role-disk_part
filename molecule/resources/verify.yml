@@ -95,7 +95,7 @@
       vars:
         matching_mount: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
         is_lvm: "{{ disk_config.lvm | default(false) }}"
-        use_uuid: "{{ disk_config.mount_uuid_path | default(false) }}"
+        path_type: "{{ disk_config.mount_path_type | default('auto') }}"
         vg_name: "{{ disk_config.lvm_vg_name | default('data') }}"
         lv_name: "{{ disk_config.lvm_lv_name | default('data') }}"
         expected_symlink: "/dev/vg-{{ vg_name }}/lv-{{ lv_name }}"
@@ -110,16 +110,18 @@
         that:
           - >-
             (
-              matching_mount.device is match('/dev/disk/by-uuid/.*')) if use_uuid else (matching_mount.device is match('/dev/disk/by-id/.*')
+              matching_mount.device is match('/dev/disk/by-uuid/.*')
+              or
+              matching_mount.device is match('/dev/disk/by-id/.*')
               or
               matching_mount.device in valid_devices
             )
         fail_msg: |
           Device mismatch for {{ disk_config.mount_path }}:
-          Expected: {{ '/dev/disk/by-uuid/...' if use_uuid else ('/dev/disk/by-id/... or ' + (valid_devices | to_json)) }}
+          Expected: Persistent path (/dev/disk/by-uuid/..., /dev/disk/by-id/...) or direct device {{ valid_devices | to_json }}
           Actual: {{ matching_mount.device | default('not found') }}
           LVM enabled: {{ is_lvm }}
-          UUID enabled: {{ use_uuid }}
+          Path type: {{ path_type }}
         success_msg: "✓ Device {{ matching_mount.device }} correctly mapped to {{ disk_config.mount_path }}"
 
     - name: Get all volume groups for LVM verification

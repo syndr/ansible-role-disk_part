@@ -109,8 +109,8 @@
         - name: Validate we have enough disks for testing
           ansible.builtin.assert:
             that:
-              - __molecule_available_disks | length >= 2
-            fail_msg: "Need at least 2 x 1GB disks for testing, found {{ __molecule_available_disks | length }}"
+              - __molecule_available_disks | length >= 4
+            fail_msg: "Need at least 4 x 1GB disks for testing, found {{ __molecule_available_disks | length }}"
             success_msg: "Found {{ __molecule_available_disks | length }} data disks for testing"
 
         - name: Display discovered disks
@@ -130,7 +130,9 @@
             content: |
               {
                 "fstab_disk": "{{ __molecule_available_disks[0] }}",
-                "lvm_disk": "{{ __molecule_available_disks[1] }}"
+                "lvm_disk": "{{ __molecule_available_disks[1] }}",
+                "uuid_disk": "{{ __molecule_available_disks[2] }}",
+                "id_disk": "{{ __molecule_available_disks[3] }}"
               }
             dest: /etc/ansible/facts.d/molecule_disks.fact
             owner: root

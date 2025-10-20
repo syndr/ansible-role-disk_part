@@ -1,6 +1,24 @@
 # Changelog
 
-## [Unreleased] - 2025-10-15
+## [Unreleased] - 2025-10-20
+### Added
+- **mount_path_type** parameter replacing mount_uuid_path with support for multiple path types:
+  - `device`: Use raw device path (e.g., /dev/sdb1)
+  - `uuid`: Use /dev/disk/by-uuid/ path (filesystem-based, changes on reformat)
+  - `id`: Use /dev/disk/by-id/ path (hardware-based, survives reformatting)
+  - `auto`: Try uuid first, fallback to id, then device (default, handles blank disks gracefully)
+- Automatic by-id discovery task (get_device_id.yml) for hardware-based persistent paths
+- Support for by-id paths with LVM volumes when specified
+- Enhanced handling of blank unpartitioned disks that lack UUIDs
+- Validation to ensure device path matches specified mount_path_type
+
+### Changed
+- **Default mount_path_type changed from 'uuid' to 'auto'** for better handling of blank disks
+
+### Removed
+- mount_uuid_path parameter (replaced by mount_path_type)
+
+## [Previous] - 2025-10-15
 ### Added
 - mount_uuid_path option to mount non-LVM filesystems via /dev/disk/by-uuid for stability
 - Automatic UUID discovery task (get_uuid.yml)

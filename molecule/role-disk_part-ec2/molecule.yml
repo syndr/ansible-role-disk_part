@@ -29,6 +29,18 @@ platforms:
           volume_type: gp3
           volume_size: 1
           delete_on_termination: true
+      - device_name: /dev/xvdd
+        virtual_name: molecule-role-disk_part-ec2-rocky9-uuid
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvde
+        virtual_name: molecule-role-disk_part-ec2-rocky9-id
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
     hostvars:
       org: molecule
       env: ci
@@ -52,6 +64,18 @@ platforms:
           delete_on_termination: true
       - device_name: /dev/xvdc
         virtual_name: molecule-role-disk_part-ec2-rocky10-lvm
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvdd
+        virtual_name: molecule-role-disk_part-ec2-rocky10-uuid
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvde
+        virtual_name: molecule-role-disk_part-ec2-rocky10-id
         ebs:
           volume_type: gp3
           volume_size: 1

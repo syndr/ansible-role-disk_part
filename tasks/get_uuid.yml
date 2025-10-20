@@ -12,16 +12,30 @@
   check_mode: false
   failed_when: false
 
-- name: Validate UUID was retrieved
+- name: Validate UUID was retrieved (strict mode)
+  when: disks_disk_config.mount_path_type == 'uuid'
   ansible.builtin.assert:
     that:
       - __disks_blkid_output.rc == 0
       - __disks_blkid_output.stdout is defined
       - __disks_blkid_output.stdout | length > 0
-    fail_msg: "Could not determine UUID for device {{ disks_disk_config.device }}"
+    fail_msg: |
+      Could not determine UUID for device {{ disks_disk_config.device }}.
+      This typically happens with blank unpartitioned disks that have no filesystem.
+      Consider using mount_path_type: 'id', 'device', or 'auto' instead.
     success_msg: "UUID for device {{ disks_disk_config.device }} is {{ __disks_blkid_output.stdout | trim }}"
 
+- name: Handle UUID retrieval failure for auto mode
+  when:
+    - disks_disk_config.mount_path_type == 'auto'
+    - __disks_blkid_output.rc != 0
+  ansible.builtin.debug:
+    msg: "No UUID found for {{ disks_disk_config.device }} (likely blank disk), will fallback to by-id or device path"
+
 - name: Update device path to use UUID
+  when:
+    - __disks_blkid_output.rc == 0
+    - __disks_blkid_output.stdout | length > 0
   ansible.builtin.set_fact:
     disks_disk_config: >-
       {{

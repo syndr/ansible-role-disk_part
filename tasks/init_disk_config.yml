@@ -16,7 +16,7 @@
       state: "{{ disks_item.state | default(disks_partition_defaults.state) }}"
       format_options: "{{ disks_item.format_options | default(disks_partition_defaults.format_options) }}"
       mount_options: "{{ disks_item.mount_options | default(disks_partition_defaults.mount_options) }}"
-      mount_uuid_path: "{{ disks_item.mount_uuid_path | default(disks_partition_defaults.mount_uuid_path) }}"
+      mount_path_type: "{{ disks_item.mount_path_type | default(disks_partition_defaults.mount_path_type) }}"
       lvm: "{{ disks_item.lvm | default(disks_partition_defaults.lvm) }}"
       lvm_vg_name: "{{ disks_item.lvm_vg_name | default(disks_partition_defaults.lvm_vg_name) }}"
       lvm_lv_name: "{{ disks_item.lvm_lv_name | default(disks_partition_defaults.lvm_vg_name) }}"
@@ -47,10 +47,44 @@
       - ((disks_disk_config.lvm_vg_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
       - ((disks_disk_config.lvm_pv_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
       - ((disks_disk_config.lvm_lv_options is defined) if disks_disk_config.lvm else True)  # TODO add specific validation for this
-      - (disks_disk_config.mount_uuid_path in [True, False])
+      - disks_disk_config.mount_path_type in ['device', 'uuid', 'id', 'auto']
       - (disks_disk_config.format != 'swap') or (not disks_disk_config.resizefs | default(false))
       - (disks_disk_config.lvm_size_percent | int >= 1 and disks_disk_config.lvm_size_percent | int <= 100)
     fail_msg: "Incorrect configuration specified for disk: {{ disks_disk_config.mount_path | default('Mount path undefined') }}"
+
+- name: Validate device path matches mount_path_type
+  when: disks_disk_config.mount_path_type != 'auto'
+  ansible.builtin.assert:
+    that:
+      - >-
+        (disks_disk_config.mount_path_type == 'uuid' and
+         (disks_disk_config.device.startswith('/dev/disk/by-uuid/') or
+          not disks_disk_config.device.startswith('/dev/disk/by-id/'))) or
+        (disks_disk_config.mount_path_type == 'id' and
+         (disks_disk_config.device.startswith('/dev/disk/by-id/') or
+          not disks_disk_config.device.startswith('/dev/disk/by-uuid/'))) or
+        (disks_disk_config.mount_path_type == 'device' and
+         not disks_disk_config.device.startswith('/dev/disk/by-'))
+    fail_msg: |
+      Device path mismatch detected!
+      - mount_path_type is set to: {{ disks_disk_config.mount_path_type }}
+      - device path provided: {{ disks_disk_config.device }}
+
+      {% if disks_disk_config.mount_path_type == 'uuid' and disks_disk_config.device.startswith('/dev/disk/by-id/') %}
+      ERROR: You specified mount_path_type: 'uuid' but provided a by-id path.
+      Either change mount_path_type to 'id' or provide a different device path.
+      {% elif disks_disk_config.mount_path_type == 'id' and disks_disk_config.device.startswith('/dev/disk/by-uuid/') %}
+      ERROR: You specified mount_path_type: 'id' but provided a by-uuid path.
+      Either change mount_path_type to 'uuid' or provide a different device path.
+      {% elif disks_disk_config.mount_path_type == 'device' and disks_disk_config.device.startswith('/dev/disk/by-') %}
+      ERROR: You specified mount_path_type: 'device' but provided a persistent path.
+      Either change mount_path_type to 'uuid'/'id' or provide a direct device path like /dev/sdb1.
+      {% endif %}
+
+      To fix this, either:
+      1. Change mount_path_type to match your device path type
+      2. Use mount_path_type: 'auto' to let the role determine the best path
+    success_msg: "Device path {{ disks_disk_config.device }} is compatible with mount_path_type {{ disks_disk_config.mount_path_type }}"
 
 - name: Check for block device {{ disks_disk_config.device }}
   ansible.builtin.stat:

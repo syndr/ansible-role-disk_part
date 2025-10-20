@@ -36,9 +36,11 @@ Role Variables
 #   - mount_path (required): The file system path at which to mount the partition
 #   - mount_type (optional): Method to use to mount the partition (fstab/systemd)
 #   - mount_options (optional): Options to be used when mounting the filesystem (string)
-#   - mount_uuid_path (optional): Mount by UUID instead of device path (true/false, default: true)
-#      * Automatically disabled for LVM volumes which use stable /dev/vg-name/lv-name paths
-#      * When enabled, mounts use /dev/disk/by-uuid/{uuid} for improved stability
+#   - mount_path_type (optional): Type of persistent device path to use (device/uuid/id/auto, default: auto)
+#      * device: Use raw device path (e.g., /dev/sdb1)
+#      * uuid: Use /dev/disk/by-uuid/ path (filesystem-based, changes on reformat)
+#      * id: Use /dev/disk/by-id/ path (hardware-based, survives reformatting)
+#      * auto: Try uuid first, fallback to id, then device (useful for unformatted disks)
 #   - resizefs (optional): Grow the filesystem to match the size of the block device (true/false)
 #      * not supported for swap format
 #   - state (optional): Existence of the partition
@@ -75,7 +77,7 @@ disks_partition_defaults:
   format_options: ""
   mount_type: systemd
   mount_options: defaults
-  mount_uuid_path: true
+  mount_path_type: auto
   force: false
   resizefs: false
   state: mounted
@@ -118,7 +120,7 @@ Example configuration using a traditional `/etc/fstab` mount:
             mount_path: /mnt/test
             mount_type: fstab
             mount_options: defaults,noatime
-            mount_uuid_path: true  # Mounts using /dev/disk/by-uuid/{uuid}
+            mount_path_type: auto  # Mounts using /dev/disk/by-uuid/{uuid}
 ```
 
 Example configuration using a systemd mount unit:  
@@ -154,7 +156,43 @@ Example configuration with LVM:
             lvm: true
             lvm_vg_name: data
             lvm_lv_name: storage
-            # mount_uuid_path automatically set to false for LVM
+            # Can still use mount_path_type: uuid or id with LVM
+```
+
+Example using hardware-based by-id paths (useful for unformatted disks):
+```yaml.ansible
+- name: Configure disk with by-id path
+  hosts: all
+  tasks:
+    - name: Configure disks
+      ansible.builtin.include_role:
+        name: disks
+      vars:
+        disks_partitions:
+          - device: /dev/sdb
+            format: btrfs
+            mount_path: /mnt/stable
+            mount_type: systemd
+            mount_path_type: id  # Uses /dev/disk/by-id/{hardware-id}
+            # Survives reformatting, unlike UUID
+```
+
+Example using auto mode for blank disks:
+```yaml.ansible
+- name: Configure potentially blank disk
+  hosts: all
+  tasks:
+    - name: Configure disks
+      ansible.builtin.include_role:
+        name: disks
+      vars:
+        disks_partitions:
+          - device: /dev/sdc
+            format: ext4
+            mount_path: /mnt/newdisk
+            mount_type: systemd
+            mount_path_type: auto  # Tries uuid, falls back to id, then device
+            # Useful for disks that may not have a filesystem yet
 ```
 
 Ansible Facts
@@ -163,7 +201,7 @@ Ansible Facts
 This role saves disk configuration to `/etc/ansible/facts.d/disk_part.fact` on the target host. The facts include:
 
 - All configuration parameters for each disk
-- UUID value for non-LVM disks (when `mount_uuid_path: true`)
+- UUID and device ID values for disks (when `mount_path_type` is set)
 - Actual device paths used for mounting
 
 Example fact data:
@@ -175,7 +213,7 @@ Example fact data:
     "format": "ext4",
     "mount_path": "/mnt/test",
     "mount_type": "fstab",
-    "mount_uuid_path": true,
+    "mount_path_type": "uuid",
     "lvm": false
   },
   {
@@ -183,7 +221,7 @@ Example fact data:
     "format": "xfs",
     "mount_path": "/mnt/data",
     "mount_type": "systemd",
-    "mount_uuid_path": false,
+    "mount_path_type": "device",
     "lvm": true,
     "lvm_vg_name": "data",
     "lvm_lv_name": "storage"
