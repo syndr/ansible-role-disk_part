@@ -1,0 +1,186 @@
+---
+# Test scenario: Verify mount_path_type auto preserves existing mount device paths
+# Validates that when a volume is already mounted, re-running the role with
+# mount_path_type: auto preserves the existing device path instead of changing it
+
+- name: Test mount_path_type auto preservation for non-LVM filesystem
+  tags: always
+  block:
+    - name: Gather current mount information before test
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Capture initial fstab mount device path
+      ansible.builtin.set_fact:
+        __test_initial_fstab_device: >-
+          {{
+            (ansible_facts.mounts | default([])
+            | selectattr('mount', 'equalto', '/mnt/fstab_test')
+            | map(attribute='device')
+            | list
+            | first)
+            if (ansible_facts.mounts | default([])
+                | selectattr('mount', 'equalto', '/mnt/fstab_test')
+                | list
+                | length > 0)
+            else ''
+          }}
+
+    - name: Verify fstab test mount exists from converge
+      ansible.builtin.assert:
+        that:
+          - __test_initial_fstab_device | length > 0
+        fail_msg: "Fstab test mount not found - converge may have failed"
+        success_msg: "✓ Found existing fstab mount with device {{ __test_initial_fstab_device }}"
+
+    - name: Re-run role with mount_path_type auto on existing fstab mount
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/fstab_test
+            mount_type: fstab
+            mount_path_type: auto
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Gather mount information after re-run
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Capture device path after re-run
+      ansible.builtin.set_fact:
+        __test_rerun_fstab_device: >-
+          {{
+            (ansible_facts.mounts | default([])
+            | selectattr('mount', 'equalto', '/mnt/fstab_test')
+            | map(attribute='device')
+            | list
+            | first)
+            if (ansible_facts.mounts | default([])
+                | selectattr('mount', 'equalto', '/mnt/fstab_test')
+                | list
+                | length > 0)
+            else ''
+          }}
+
+    - name: Verify device path was preserved (idempotent)
+      ansible.builtin.assert:
+        that:
+          - __test_rerun_fstab_device == __test_initial_fstab_device
+        fail_msg: |
+          mount_path_type auto failed to preserve existing device path!
+          Initial device: {{ __test_initial_fstab_device }}
+          After re-run: {{ __test_rerun_fstab_device }}
+          This indicates the role is not idempotent for existing mounts.
+        success_msg: "✓ Device path preserved: {{ __test_initial_fstab_device }}"
+
+    - name: Verify companion cube still exists (no data loss)
+      become: true
+      ansible.builtin.stat:
+        path: /mnt/fstab_test/companion_cube.txt
+      register: __fstab_companion_cube
+
+    - name: Ensure companion cube survived re-run
+      ansible.builtin.assert:
+        that:
+          - __fstab_companion_cube.stat.exists
+        fail_msg: "Companion cube was destroyed during re-run!"
+        success_msg: "✓ Data integrity maintained during re-run"
+
+- name: Test mount_path_type auto preservation for LVM filesystem
+  tags: always
+  block:
+    - name: Gather current mount information before LVM test
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Capture initial LVM mount device path
+      ansible.builtin.set_fact:
+        __test_initial_lvm_device: >-
+          {{
+            (ansible_facts.mounts | default([])
+            | selectattr('mount', 'equalto', '/mnt/lvm_test')
+            | map(attribute='device')
+            | list
+            | first)
+            if (ansible_facts.mounts | default([])
+                | selectattr('mount', 'equalto', '/mnt/lvm_test')
+                | list
+                | length > 0)
+            else ''
+          }}
+
+    - name: Verify LVM test mount exists from converge
+      ansible.builtin.assert:
+        that:
+          - __test_initial_lvm_device | length > 0
+        fail_msg: "LVM test mount not found - converge may have failed"
+        success_msg: "✓ Found existing LVM mount with device {{ __test_initial_lvm_device }}"
+
+    - name: Re-run role with mount_path_type auto on existing LVM mount
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
+            format: xfs
+            lvm: true
+            lvm_vg_name: data
+            lvm_lv_name: data
+            mount_path: /mnt/lvm_test
+            mount_type: systemd
+            mount_path_type: auto
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Gather mount information after LVM re-run
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Capture LVM device path after re-run
+      ansible.builtin.set_fact:
+        __test_rerun_lvm_device: >-
+          {{
+            (ansible_facts.mounts | default([])
+            | selectattr('mount', 'equalto', '/mnt/lvm_test')
+            | map(attribute='device')
+            | list
+            | first)
+            if (ansible_facts.mounts | default([])
+                | selectattr('mount', 'equalto', '/mnt/lvm_test')
+                | list
+                | length > 0)
+            else ''
+          }}
+
+    - name: Verify LVM device path was preserved (idempotent)
+      ansible.builtin.assert:
+        that:
+          - __test_rerun_lvm_device == __test_initial_lvm_device
+        fail_msg: |
+          mount_path_type auto failed to preserve existing LVM device path!
+          Initial device: {{ __test_initial_lvm_device }}
+          After re-run: {{ __test_rerun_lvm_device }}
+          This indicates the role is not idempotent for existing LVM mounts.
+        success_msg: "✓ LVM device path preserved: {{ __test_initial_lvm_device }}"
+
+    - name: Verify LVM companion cube still exists (no data loss)
+      become: true
+      ansible.builtin.stat:
+        path: /mnt/lvm_test/companion_cube.txt
+      register: __lvm_companion_cube
+
+    - name: Ensure LVM companion cube survived re-run
+      ansible.builtin.assert:
+        that:
+          - __lvm_companion_cube.stat.exists
+        fail_msg: "LVM companion cube was destroyed during re-run!"
+        success_msg: "✓ LVM data integrity maintained during re-run"

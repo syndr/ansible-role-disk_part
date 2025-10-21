@@ -71,7 +71,10 @@ Contains merged per-disk configuration (post UUID/LVM resolution). Agents readin
 - Presence of `lvm: true` -> treat device as PV; final mount path device will become /dev/vg-name/lv-name.
 - If `mount_path_type: uuid` -> prefer /dev/disk/by-uuid reference (filesystem-based, changes on reformat)
 - If `mount_path_type: id` -> prefer /dev/disk/by-id reference (hardware-based, survives reformatting)
-- If `mount_path_type: auto` -> try uuid first, fallback to id, then device
+- If `mount_path_type: auto` -> **IDEMPOTENT BEHAVIOR**:
+  - For existing volumes already mounted at the target path: preserves the current device path (uuid, id, or device) to maintain idempotency
+  - For new volumes: tries uuid first, fallback to id, then device
+  - This ensures existing configurations are not changed unnecessarily
 - If `mount_path_type: device` -> use raw device path (e.g., /dev/sdb1)
 - If fact records show differing device vs requested config device, migration may be incomplete.
 

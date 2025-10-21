@@ -169,3 +169,14 @@
             mount_path_type: auto
       ansible.builtin.include_role:
         name: disk_part
+
+- name: Test mount_path_type auto preservation (idempotency)
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Execute auto path preservation test
+      tags:
+        - always
+        - auto_path_preservation
+      ansible.builtin.include_tasks: side_effects/test_auto_path_preservation.yml

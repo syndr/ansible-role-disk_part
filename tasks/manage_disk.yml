@@ -13,6 +13,22 @@
     __disks_fact_record: "{{ disks_disk_config }}"
     __disks_original_device: "{{ disks_disk_config.device }}"
 
+- name: Detect existing mount device path for this mount point
+  ansible.builtin.set_fact:
+    __disks_existing_mount_device: >-
+      {{
+        (ansible_facts.mounts | default([])
+        | selectattr('mount', 'equalto', disks_disk_config.mount_path)
+        | map(attribute='device')
+        | list
+        | first)
+        if (ansible_facts.mounts | default([])
+            | selectattr('mount', 'equalto', disks_disk_config.mount_path)
+            | list
+            | length > 0)
+        else ''
+      }}
+
 - name: Things to do only if a disk is present (not to be removed)
   # Volumes are unmounted and not formatted if state is "absent"
   when: disks_disk_config.state != "absent"
@@ -63,6 +79,52 @@
         - disks_disk_config.lvm is true
       ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
 
+    # Mount Device Path Selection Logic
+    # ==================================
+    # This task determines which device path will be used in mount configurations
+    # (systemd .mount units or /etc/fstab entries). The selection depends on the
+    # mount_path_type setting:
+    #
+    # 1. mount_path_type: 'uuid'
+    #    - Always use /dev/disk/by-uuid/<filesystem-uuid>
+    #    - UUID is filesystem-specific and changes on reformat
+    #    - Requires base_device_uuid to be discovered post-format
+    #
+    # 2. mount_path_type: 'id'
+    #    - Always use /dev/disk/by-id/<hardware-id>
+    #    - ID is hardware-based and persists across reformats
+    #    - For LVM volumes: uses lvm_device_id_path (e.g., /dev/disk/by-id/dm-uuid-LVM-...)
+    #    - For regular filesystems: uses device_id_path (e.g., /dev/disk/by-id/ata-...)
+    #
+    # 3. mount_path_type: 'device'
+    #    - Use the raw kernel device path (e.g., /dev/sdb1)
+    #    - Least stable; device names can change on reboot or hardware changes
+    #
+    # 4. mount_path_type: 'auto' (DEFAULT - Most Common)
+    #    - IDEMPOTENT BEHAVIOR: Preserves existing mount configurations
+    #    - Decision tree:
+    #      a) If volume already mounted at target path → use existing device path
+    #         - Preserves whatever was configured (uuid, id, or device)
+    #         - Prevents unnecessary changes to working configurations
+    #         - Ensures true idempotency on re-runs
+    #      b) For new/unmounted volumes, prefer stability (fallback chain):
+    #         i.   Try filesystem UUID first (/dev/disk/by-uuid/...)
+    #         ii.  Fallback to hardware ID (/dev/disk/by-id/...)
+    #         iii. Fallback to LVM ID for LVM volumes
+    #         iv.  Last resort: raw device path
+    #
+    # Why this matters:
+    # - Kernel device names (/dev/sdb) can change between reboots
+    # - UUIDs survive kernel renaming but change on reformat
+    # - Hardware IDs survive both renaming and reformats
+    # - Existing mounts should not be altered unless necessary (change minimization)
+    #
+    # Variables used:
+    # - __disks_existing_mount_device: Device path from current mount (if exists)
+    # - base_device_uuid: Filesystem UUID discovered by get_uuid.yml
+    # - device_id_path: Hardware ID discovered by get_device_id.yml
+    # - lvm_device_id_path: LVM volume ID discovered by get_device_id.yml
+    # - disks_disk_config.device: Original user-provided device path
     - name: Determine final mount device path
       ansible.builtin.set_fact:
         __disks_disk_runtime_device: >-
@@ -73,7 +135,9 @@
           {%- elif disks_disk_config.mount_path_type == 'id' and disks_disk_config.lvm_device_id_path is defined -%}
             {{ disks_disk_config.lvm_device_id_path }}
           {%- elif disks_disk_config.mount_path_type == 'auto' -%}
-            {%- if disks_disk_config.base_device_uuid is defined -%}
+            {%- if __disks_existing_mount_device is defined and __disks_existing_mount_device | length > 0 -%}
+              {{ __disks_existing_mount_device }}
+            {%- elif disks_disk_config.base_device_uuid is defined -%}
               /dev/disk/by-uuid/{{ disks_disk_config.base_device_uuid }}
             {%- elif disks_disk_config.device_id_path is defined -%}
               {{ disks_disk_config.device_id_path }}
