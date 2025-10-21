@@ -13,7 +13,11 @@
 - Validation to ensure device path matches specified mount_path_type
 
 ### Changed
+- **Default filesystem format changed from 'btrfs' to 'xfs'** for broader compatibility across enterprise Linux distributions
 - **Default mount_path_type changed from 'uuid' to 'auto'** for better handling of blank disks
+
+### Fixed
+- LVM volume group name validation now properly detects mismatches between existing and requested VG names
 
 ### Removed
 - mount_uuid_path parameter (replaced by mount_path_type)

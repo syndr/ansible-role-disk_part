@@ -110,7 +110,7 @@
 - name: Parse block device partition information
   when: __disks_lsblk_output is not skipped
   ansible.builtin.set_fact:
-    __disks_device_blockdevices: "{{ (__disks_lsblk_output.stdout | from_json).blockdevices }}"
+    __disks_device_blockdevices: "{{ (__disks_lsblk_output.stdout | from_json).blockdevices[0] }}"
 
 # LVM disks created and managed by this role should only contain 'lvm' type volumes
 - name: Validate LVM block device existing configuration
@@ -124,4 +124,39 @@
       - __disks_device_blockdevices.children | selectattr('type', 'equalto', 'lvm') | list | length == __disks_device_blockdevices.children | list | length
     fail_msg: 💥 LVM configuration mismatch for block device {{ disks_disk_config.device }}! Disk has partitions, but expected LVM configuration not found.
     success_msg: Block device with existing LVM configuration found
+
+# Validate that existing LVM VG name matches requested VG name
+- name: Check existing volume group name on LVM device
+  when:
+    - disks_disk_config.lvm
+    - not disks_disk_config.force
+    - __disks_device_blockdevices is defined
+    - __disks_device_blockdevices.children is defined
+    - __disks_device_blockdevices.children | selectattr('type', 'equalto', 'lvm') | list | length > 0
+  block:
+    - name: Get existing volume group name for device
+      become: true
+      ansible.builtin.command:
+        cmd: "pvs --noheadings -o vg_name {{ disks_disk_config.device }}"
+      register: __disks_existing_vg_name_output
+      changed_when: false
+      failed_when: false
+
+    - name: Validate volume group name matches configuration
+      when:
+        - __disks_existing_vg_name_output.rc == 0
+        - __disks_existing_vg_name_output.stdout | trim | length > 0
+      vars:
+        __disks_existing_vg_name: "{{ __disks_existing_vg_name_output.stdout | trim }}"
+        __disks_requested_vg_name: "vg-{{ disks_disk_config.lvm_vg_name }}"
+      ansible.builtin.assert:
+        that:
+          - __disks_existing_vg_name == __disks_requested_vg_name
+        fail_msg: |
+          💥 Volume group name mismatch for {{ disks_disk_config.device }}!
+          Existing VG: {{ __disks_existing_vg_name }}
+          Requested VG: {{ __disks_requested_vg_name }}
+
+          Device contains other LVM volume groups. Use force: true to override.
+        success_msg: "✓ Volume group name {{ __disks_requested_vg_name }} matches existing configuration"
 

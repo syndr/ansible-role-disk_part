@@ -73,7 +73,7 @@ disks_partitions:
 
 # Default values ↓
 disks_partition_defaults:
-  format: btrfs
+  format: xfs
   format_options: ""
   mount_type: systemd
   mount_options: defaults
@@ -170,7 +170,7 @@ Example using hardware-based by-id paths (useful for unformatted disks):
       vars:
         disks_partitions:
           - device: /dev/sdb
-            format: btrfs
+            format: xfs
             mount_path: /mnt/stable
             mount_type: systemd
             mount_path_type: id  # Uses /dev/disk/by-id/{hardware-id}

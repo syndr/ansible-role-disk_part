@@ -34,7 +34,7 @@ Effective defaults in `disks_partition_defaults` applied (agents merging user in
 Each item under `disks_partitions` supports:
 - device (required)
 - mount_path (required)
-- format (default btrfs) [btrfs|ext4|lvm|xfs|swap]
+- format (default xfs) [btrfs|ext4|lvm|xfs|swap]
 - format_options
 - mount_type (systemd|fstab) default systemd
 - mount_options (defaults)
@@ -63,7 +63,7 @@ Contains merged per-disk configuration (post UUID/LVM resolution). Agents readin
 4. Avoid toggling between systemd and fstab mounts without a convergence plan (clean stale units or fstab entries).
 
 ## Common Automation Scenarios
-- Add new data disk: append item with device, mount_path; rely on defaults for btrfs & systemd.
+- Add new data disk: append item with device, mount_path; rely on defaults for xfs & systemd.
 - Convert existing ext4 fstab mount to systemd: set mount_type: systemd; ensure previous fstab entry removal (`state: absent_from_fstab`) if needed.
 - Introduce LVM abstraction: set lvm: true, supply vg/lv names; format switched to filesystem (e.g., xfs) not 'lvm'.
 
@@ -76,7 +76,7 @@ Contains merged per-disk configuration (post UUID/LVM resolution). Agents readin
 - If fact records show differing device vs requested config device, migration may be incomplete.
 
 ## Change Impact Assessment (use CHANGELOG)
-Defaults shifting (e.g., format ext4 -> btrfs) can silently alter provisioning; agents upgrading role version should explicitly set prior defaults to maintain legacy behavior.
+Defaults shifting (e.g., format ext4 -> btrfs -> xfs) can silently alter provisioning; agents upgrading role version should explicitly set prior defaults to maintain legacy behavior.
 
 ## Error Handling Patterns
 Potential failure points:
@@ -108,7 +108,7 @@ Potential failure points:
   "disks_partitions.item": {
     "device": "string:path",
     "mount_path": "string:absolute path",
-    "format": {"enum": ["btrfs", "ext4", "lvm", "xfs", "swap"], "default": "btrfs"},
+    "format": {"enum": ["btrfs", "ext4", "lvm", "xfs", "swap"], "default": "xfs"},
     "format_options": "string",
     "mount_type": {"enum": ["systemd", "fstab"], "default": "systemd"},
     "mount_options": {"type": "string", "default": "defaults"},

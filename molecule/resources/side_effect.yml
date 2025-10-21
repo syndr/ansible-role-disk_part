@@ -84,7 +84,7 @@
       vars:
         disks_partitions:
           - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
-            format: btrfs
+            format: ext4
             lvm: false
             mount_path: /mnt/uuid_test
             mount_type: systemd
@@ -129,7 +129,7 @@
       vars:
         disks_partitions:
           - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
-            format: btrfs
+            format: ext4
             lvm: false
             mount_path: /mnt/uuid_test
             mount_type: systemd

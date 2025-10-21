@@ -66,7 +66,7 @@
 
     - name: Install package prerequisites (Fedora)
       become: true
-      when: ansible_distribution | lower == 'fedora'
+      when: ansible_facts.distribution | lower == 'fedora'
       ansible.builtin.package:
           name:
             - procps-ng
@@ -74,13 +74,13 @@
             - openssh-server
 
     - name: Install standalone python interpreter (AL2)
-      when: ansible_distribution == "Amazon" and ansible_distribution_major_version == "2"
+      when: ansible_facts.distribution == "Amazon" and ansible_facts.distribution_major_version == "2"
       ansible.builtin.include_role:
         name: python_standalone
 
     - name: Perform system prep (Rocky)
       become: true
-      when: ansible_distribution == "Rocky"
+      when: ansible_facts.distribution == "Rocky"
       block:
         # This fails to start in the docker container for some reason
         - name: Disable getty service (Rocky)

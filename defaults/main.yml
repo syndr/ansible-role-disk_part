@@ -58,7 +58,7 @@ disks_allow_mountpoint_changes: true
 # Default values ↓
 
 disks_partition_defaults:
-  format: btrfs
+  format: xfs
   format_options: ""
   mount_type: systemd
   mount_options: defaults
