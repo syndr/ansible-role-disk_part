@@ -40,7 +40,7 @@ Role Variables
 #      * device: Use raw device path (e.g., /dev/sdb1)
 #      * uuid: Use /dev/disk/by-uuid/ path (filesystem-based, changes on reformat)
 #      * id: Use /dev/disk/by-id/ path (hardware-based, survives reformatting)
-#      * auto: Try uuid first, fallback to id, then device (useful for unformatted disks)
+#      * auto: **Idempotent mode** - preserves existing device paths for already-configured volumes, or tries uuid → id → device for new volumes
 #   - resizefs (optional): Grow the filesystem to match the size of the block device (true/false)
 #      * not supported for swap format
 #   - state (optional): Existence of the partition
@@ -120,7 +120,7 @@ Example configuration using a traditional `/etc/fstab` mount:
             mount_path: /mnt/test
             mount_type: fstab
             mount_options: defaults,noatime
-            mount_path_type: auto  # Mounts using /dev/disk/by-uuid/{uuid}
+            mount_path_type: auto  # Preserves existing paths or uses UUID for new volumes
 ```
 
 Example configuration using a systemd mount unit:  
@@ -191,7 +191,7 @@ Example using auto mode for blank disks:
             format: ext4
             mount_path: /mnt/newdisk
             mount_type: systemd
-            mount_path_type: auto  # Tries uuid, falls back to id, then device
+            mount_path_type: auto  # Idempotent: preserves existing paths, tries uuid→id→device for new volumes
             # Useful for disks that may not have a filesystem yet
 ```
 
