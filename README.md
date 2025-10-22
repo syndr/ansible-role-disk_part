@@ -1,5 +1,7 @@
-disks
+disk_part
 =========
+
+[![Role - disk_part](https://github.com/syndr/ansible-role-disk_part/actions/workflows/role-disk_part.yml/badge.svg)](https://github.com/syndr/ansible-role-disk_part/actions/workflows/role-disk_part.yml)
 
 Configure disks on the target host. This includes:
 - Partitioning and formatting
@@ -11,20 +13,21 @@ Configure disks on the target host. This includes:
 How It Works
 ------------
 
-This role provides idempotent disk management with support for LVM, multiple filesystems, and flexible mount configurations.
+Manages disk partitioning, formatting, and mounting with true idempotence. Handles everything from raw block devices to LVM volumes, with intelligent device path resolution that survives reboots and hardware changes.
 
-**Quick overview:**
-See [flow_diagram_basic.mmd](flow_diagram_basic.mmd) for a simplified flow diagram showing the main provisioning steps.
+**Key Features:**
 
-**Detailed architecture:**
-For a comprehensive view of all decision points and path resolution logic, see [flow_diagram.mmd](flow_diagram.mmd).
+- **Idempotent device paths**: Auto mode preserves existing UUID/ID paths across runs, preventing unnecessary remounts
+- **Persistent device references**: Choose by-uuid (filesystem-based), by-id (hardware-based), or kernel device paths
+- **Flexible mounting**: Deploy via systemd mount units or traditional /etc/fstab
+- **LVM integration**: Optional physical volume, volume group, and logical volume provisioning
+- **Multiple filesystems**: Supports ext4, xfs, btrfs, and swap
+- **State tracking**: Records configuration in `/etc/ansible/facts.d/disk_part.fact` for future runs
+- **Safe operations**: Validates existing mounts, prevents duplicate mounts, and requires explicit force flags for destructive changes
 
-Key features:
-- **Idempotent path handling**: `mount_path_type: auto` preserves existing device paths (UUIDs, IDs) on subsequent runs
-- **Multiple mount methods**: systemd units or /etc/fstab
-- **Persistent device paths**: Use by-uuid, by-id, or kernel device paths
-- **LVM support**: Optional volume group and logical volume management
-- **Configuration tracking**: Saves state to `/etc/ansible/facts.d/disk_part.fact`
+**Flow Diagrams:**
+- [Basic overview](flow_diagram_basic.mmd) - simplified provisioning flow
+- [Detailed architecture](flow_diagram.mmd) - complete decision tree and path resolution logic
 
 Requirements
 ------------
@@ -38,7 +41,7 @@ The desired disk must already be attached to the target machine.
 Role Variables
 --------------
 
-```yaml.ansible
+```yaml
 ######## Disk Partitions #######################################################
 #
 # The disks_partitions variable contains a list of dictionaries which define
@@ -124,7 +127,7 @@ Example Playbook
 ----------------
 
 Example configuration using a traditional `/etc/fstab` mount:  
-```yaml.ansible
+```yaml
 - name: Make the disks
   hosts: all
   tasks:
@@ -142,7 +145,7 @@ Example configuration using a traditional `/etc/fstab` mount:
 ```
 
 Example configuration using a systemd mount unit:  
-```yaml.ansible
+```yaml
 - name: Make the disks
   hosts: all
   tasks:
@@ -157,8 +160,8 @@ Example configuration using a systemd mount unit:
             mount_type: systemd
 ```
 
-Example configuration with LVM:
-```yaml.ansible
+Example configuration with LVM:  
+```yaml
 - name: Make the disks with LVM
   hosts: all
   tasks:
@@ -177,8 +180,8 @@ Example configuration with LVM:
             # Can still use mount_path_type: uuid or id with LVM
 ```
 
-Example using hardware-based by-id paths (useful for unformatted disks):
-```yaml.ansible
+Example using hardware-based by-id paths (useful for unformatted disks):  
+```yaml
 - name: Configure disk with by-id path
   hosts: all
   tasks:
@@ -195,8 +198,8 @@ Example using hardware-based by-id paths (useful for unformatted disks):
             # Survives reformatting, unlike UUID
 ```
 
-Example using auto mode for blank disks:
-```yaml.ansible
+Example using auto mode for blank disks:  
+```yaml
 - name: Configure potentially blank disk
   hosts: all
   tasks:
@@ -222,12 +225,11 @@ This role saves disk configuration to `/etc/ansible/facts.d/disk_part.fact` on t
 - UUID and device ID values for disks (when `mount_path_type` is set)
 - Actual device paths used for mounting
 
-Example fact data:
+Example fact data:  
 ```json
 [
   {
     "device": "/dev/disk/by-uuid/5f2c38d2-c5d5-47cd-a2e9-2f023294b4d0",
-    "uuid": "5f2c38d2-c5d5-47cd-a2e9-2f023294b4d0",
     "format": "ext4",
     "mount_path": "/mnt/test",
     "mount_type": "fstab",
