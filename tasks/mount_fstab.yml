@@ -1,6 +1,16 @@
 ---
 # Manage a partition mount via /etc/fstab
 
+- name: Gather mount information for duplicate detection
+  ansible.builtin.setup:
+    gather_subset:
+      - "!all"
+      - "mounts"
+  when: disks_allow_mountpoint_changes | default(true)
+
+- name: Check for duplicate mounts before configuring systemd mount
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_disks.yml"
+
 - name: Configure /etc/fstab mount point ({{ disks_disk_config.mount_path }})
   become: true
   ansible.posix.mount:
@@ -21,6 +31,6 @@
     state: remounted
   when:
     - disks_fstab_install_output is changed
-    - disks_disk_config.mount_path in (ansible_mounts | map(attribute='mount') | list)
-    - disks_disk_config.status == 'mounted'
+    - disks_disk_config.mount_path in (ansible_facts.mounts | map(attribute='mount') | list)
+    - disks_disk_config.state == 'mounted'
 

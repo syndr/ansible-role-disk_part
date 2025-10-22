@@ -1,0 +1,97 @@
+---
+# Test scenario: Verify data integrity after all validation tests
+# Confirms that companion cube files remain intact, proving validation doesn't accidentally destroy data
+
+- name: Verify data integrity after validation tests
+  tags: always
+  vars:
+    ci_companion_cubes:
+      - /mnt/fstab_test/companion_cube.txt
+      - /mnt/lvm_test/companion_cube.txt
+
+    # Beware premature evaluation of these vars 🠗
+    existing_cubes: >-
+      {{
+        companion_cubes_exist.results
+        | selectattr('stat.exists', 'equalto', true)
+        | list
+      }}
+    cube_count: >-
+      {{
+        existing_cubes
+        | length
+        | default(0)
+      }}
+    integrity_markers: >-
+      {{
+        test_files_content.results
+        | default([])
+        | selectattr('content', 'defined')
+        | map(attribute='content')
+        | map('b64decode')
+        | map('regex_search', 'Test data integrity marker')
+        | select
+        | list
+      }}
+    destruction_warnings: >-
+      {{
+        test_files_content.results
+        | default([])
+        | selectattr('content', 'defined')
+        | map(attribute='content')
+        | map('b64decode')
+        | map('regex_search', 'should NOT be destroyed')
+        | select
+        | list
+      }}
+  block:
+    - name: Check if companion cube files exist
+      loop: "{{ ci_companion_cubes }}"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: companion_cubes_exist
+
+    - name: Read companion cube files if they exist
+      loop: "{{ companion_cubes_exist.results }}"
+      when: item.stat.exists
+      ansible.builtin.slurp:
+        src: "{{ item.item }}"
+      register: test_files_content
+
+    - name: Validate companion cube file integrity
+      vars:
+      ansible.builtin.debug:
+        msg: |
+          Debug info:
+          - cube_count: {{ cube_count }}
+          - ci_companion_cubes length: {{ ci_companion_cubes | length }}
+          - integrity_markers length: {{ integrity_markers | length }}
+          - destruction_warnings length: {{ destruction_warnings | length }}
+          - test_files_content has {{ test_files_content.results | default([]) | length }} results
+          - with content defined: {{ test_files_content.results | default([]) | selectattr('content', 'defined') | list | length }}
+        verbosity: 1
+
+    - name: Assert companion cube file integrity
+      ansible.builtin.assert:
+        that:
+          - cube_count | int == ci_companion_cubes | length
+          - integrity_markers | length == cube_count | int
+          - destruction_warnings | length == cube_count | int
+        success_msg: >-
+          ✓ Data integrity verified - {{ cube_count }} companion cubes were not incinerated by validation tests
+        fail_msg: |
+          Data integrity check failed! Companion cubes were modified or incinerated.
+          Found {{ cube_count }} cubes, expected intact data in all.
+
+    - name: Report companion cube status
+      vars:
+        verified_cubes: >-
+          {{
+            companion_cubes_exist.results
+            | selectattr('stat.exists', 'equalto', true)
+            | list
+          }}
+      ansible.builtin.debug:
+        msg: >-
+          ✅ Data integrity verification complete - {{ verified_cubes | length }}
+          companion cubes validated successfully

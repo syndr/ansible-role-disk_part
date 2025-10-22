@@ -1,0 +1,200 @@
+---
+# This is run in a loop
+# loop var: disks_item
+
+- name: Priming the blasters!
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/init_disk_config.yml"
+
+- name: Checking target coordinates
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/check_state.yml"
+
+- name: Store initial disk configuration facts
+  ansible.builtin.set_fact:
+    __disks_fact_record:
+      device: "{{ disks_disk_config.device }}"
+      mount_path: "{{ disks_disk_config.mount_path }}"
+      mount_type: "{{ disks_disk_config.mount_type }}"
+      mount_path_type: "{{ disks_disk_config.mount_path_type }}"
+      format: "{{ disks_disk_config.format }}"
+      mount_options: "{{ disks_disk_config.mount_options }}"
+      state: "{{ disks_disk_config.state }}"
+      description: "{{ disks_disk_config.description }}"
+      lvm: "{{ disks_disk_config.lvm }}"
+      lvm_vg_name: "{{ disks_disk_config.lvm_vg_name }}"
+      lvm_lv_name: "{{ disks_disk_config.lvm_lv_name }}"
+    __disks_original_device: "{{ disks_disk_config.device }}"
+
+- name: Detect existing mount device path for this mount point
+  vars:
+    # Try disk_part fact first (has configured device paths like UUIDs/IDs)
+    __disk_part_matches: >-
+      {{
+        ansible_facts.ansible_local.disk_part | default([])
+        | selectattr('mount_path', 'equalto', disks_disk_config.mount_path)
+        | list
+      }}
+    # Fall back to kernel mounts for first run of role on already-mounted disk
+    # (adopting existing mount that doesn't have disk_part fact yet)
+    __mounts_matches: >-
+      {{
+        ansible_facts.mounts | default([])
+        | selectattr('mount', 'equalto', disks_disk_config.mount_path)
+        | list
+      }}
+  ansible.builtin.set_fact:
+    __disks_existing_mount_device: >-
+      {{
+        (__disk_part_matches | first).device
+        if __disk_part_matches | length > 0
+        else (
+          (__mounts_matches | first).device
+          if __mounts_matches | length > 0
+          else ''
+        )
+      }}
+
+- name: Things to do only if a disk is present (not to be removed)
+  # Volumes are unmounted and not formatted if state is "absent"
+  when: disks_disk_config.state != "absent"
+  vars:
+    __disks_disk_needs_path_resolution: >-
+      {{
+        disks_disk_config.mount_path_type in ['uuid', 'id', 'auto']
+        and not (
+          disks_disk_config.device.startswith('/dev/disk/by-uuid/')
+          or
+          disks_disk_config.device.startswith('/dev/disk/by-id/')
+        )
+      }}
+    # Always use the original device path for filesystem operations
+    __disks_filesystem_device: >-
+      {{ disks_disk_config.device }}
+  block:
+    - name: Pre-format device ID discovery (for blank disks)
+      when:
+        - __disks_disk_needs_path_resolution
+        - disks_disk_config.mount_path_type in ['id', 'auto']
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
+
+    - name: Configure LVM
+      when: disks_disk_config.lvm is true
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/lvm.yml"
+
+    - name: Configure filesystem for {{ disks_disk_config.device }}
+      become: true
+      community.general.filesystem:
+        dev: "{{ __disks_filesystem_device }}"
+        fstype: "{{ disks_disk_config.format }}"
+        force: "{{ disks_disk_config.force }}"
+        opts: "{{ disks_disk_config.format_options }}"
+        resizefs: "{{ disks_disk_config.resizefs }}"
+        state: present
+
+    - name: Post-format path resolution (get filesystem UUIDs)
+      when:
+        - __disks_disk_needs_path_resolution
+        - disks_disk_config.mount_path_type in ['uuid', 'auto']
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_uuid.yml"
+
+    - name: Post-format device ID discovery (for formatted LVM volumes)
+      when:
+        - __disks_disk_needs_path_resolution
+        - disks_disk_config.mount_path_type in ['id', 'auto']
+        - disks_disk_config.lvm is true
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_device_id.yml"
+
+    # Mount Device Path Selection Logic
+    # ==================================
+    # This task determines which device path will be used in mount configurations
+    # (systemd .mount units or /etc/fstab entries). The selection depends on the
+    # mount_path_type setting:
+    #
+    # 1. mount_path_type: 'uuid'
+    #    - Always use /dev/disk/by-uuid/<filesystem-uuid>
+    #    - UUID is filesystem-specific and changes on reformat
+    #    - Requires base_device_uuid to be discovered post-format
+    #
+    # 2. mount_path_type: 'id'
+    #    - Always use /dev/disk/by-id/<hardware-id>
+    #    - ID is hardware-based and persists across reformats
+    #    - For LVM volumes: uses lvm_device_id_path (e.g., /dev/disk/by-id/dm-uuid-LVM-...)
+    #    - For regular filesystems: uses device_id_path (e.g., /dev/disk/by-id/ata-...)
+    #
+    # 3. mount_path_type: 'device'
+    #    - Use the raw kernel device path (e.g., /dev/sdb1)
+    #    - Least stable; device names can change on reboot or hardware changes
+    #
+    # 4. mount_path_type: 'auto' (DEFAULT - Most Common)
+    #    - IDEMPOTENT BEHAVIOR: Preserves existing mount configurations
+    #    - Decision tree:
+    #      a) If volume already mounted at target path → use existing device path
+    #         - Preserves whatever was configured (uuid, id, or device)
+    #         - Prevents unnecessary changes to working configurations
+    #         - Ensures true idempotency on re-runs
+    #      b) For new/unmounted volumes, prefer stability (fallback chain):
+    #         i.   Try filesystem UUID first (/dev/disk/by-uuid/...)
+    #         ii.  Fallback to hardware ID (/dev/disk/by-id/...)
+    #         iii. Fallback to LVM ID for LVM volumes
+    #         iv.  Last resort: raw device path
+    #
+    # Why this matters:
+    # - Kernel device names (/dev/sdb) can change between reboots
+    # - UUIDs survive kernel renaming but change on reformat
+    # - Hardware IDs survive both renaming and reformats
+    # - Existing mounts should not be altered unless necessary (change minimization)
+    #
+    # Variables used:
+    # - __disks_existing_mount_device: Device path from current mount (if exists)
+    # - base_device_uuid: Filesystem UUID discovered by get_uuid.yml
+    # - device_id_path: Hardware ID discovered by get_device_id.yml
+    # - lvm_device_id_path: LVM volume ID discovered by get_device_id.yml
+    # - disks_disk_config.device: Original user-provided device path
+    - name: Determine final mount device path
+      ansible.builtin.set_fact:
+        __disks_disk_runtime_device: >-
+          {%- if disks_disk_config.mount_path_type == 'uuid' and disks_disk_config.base_device_uuid is defined -%}
+            /dev/disk/by-uuid/{{ disks_disk_config.base_device_uuid }}
+          {%- elif disks_disk_config.mount_path_type == 'id' and disks_disk_config.device_id_path is defined -%}
+            {{ disks_disk_config.device_id_path }}
+          {%- elif disks_disk_config.mount_path_type == 'id' and disks_disk_config.lvm_device_id_path is defined -%}
+            {{ disks_disk_config.lvm_device_id_path }}
+          {%- elif disks_disk_config.mount_path_type == 'auto' -%}
+            {%- if __disks_existing_mount_device is defined and __disks_existing_mount_device | length > 0 -%}
+              {{ __disks_existing_mount_device }}
+            {%- elif disks_disk_config.base_device_uuid is defined -%}
+              /dev/disk/by-uuid/{{ disks_disk_config.base_device_uuid }}
+            {%- elif disks_disk_config.device_id_path is defined -%}
+              {{ disks_disk_config.device_id_path }}
+            {%- elif disks_disk_config.lvm_device_id_path is defined -%}
+              {{ disks_disk_config.lvm_device_id_path }}
+            {%- else -%}
+              {{ disks_disk_config.device }}
+            {%- endif -%}
+          {%- else -%}
+            {{ disks_disk_config.device }}
+          {%- endif -%}
+
+    - name: Update disk configuration with resolved paths
+      ansible.builtin.set_fact:
+        __disks_fact_record: >-
+          {{
+            __disks_fact_record
+            | combine({
+              'device': __disks_disk_runtime_device,
+              'original_device': __disks_original_device,
+              'runtime_device': __disks_disk_runtime_device
+            })
+          }}
+        disks_disk_config: "{{ disks_disk_config | combine({'device': __disks_disk_runtime_device}) }}"
+
+- name: Configure systemd mount
+  when: disks_disk_config.mount_type == "systemd"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/mount_systemd.yml"
+
+- name: Configure fstab mount
+  when: disks_disk_config.mount_type == "fstab"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/mount_fstab.yml"
+
+- name: Store disk configuration fact
+  ansible.builtin.set_fact:
+    disks_fact_data: "{{ disks_fact_data + [ __disks_fact_record ] }}"

@@ -1,0 +1,50 @@
+---
+# Locate any duplicate mounts
+
+- name: Gather system mount information
+  ansible.builtin.setup:
+    gather_subset:
+      - "!all"
+      - "mounts"
+
+- name: Get canonical path for configured device
+  ansible.builtin.command:
+    cmd: "readlink -f {{ disks_disk_config.device }}"
+  register: __disks_canonical_device
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Set canonical device path
+  ansible.builtin.set_fact:
+    __disks_device_canonical: >-
+      {{
+        __disks_canonical_device.stdout
+        if __disks_canonical_device.rc == 0
+        else
+        disks_disk_config.device
+      }}
+
+- name: Find duplicate mounts by resolving all device paths
+  ansible.builtin.shell: |
+    for mount in {{ ansible_facts.mounts | map(attribute='device') | select('search', '^/dev/') | join(' ') }}; do
+      target=$(readlink -f "$mount" 2>/dev/null || echo "$mount")
+      if [ "$target" = "{{ __disks_device_canonical }}" ]; then
+        echo "$mount"
+      fi
+    done
+  register: __disks_matching_devices
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Identify mounts to unmount
+  ansible.builtin.set_fact:
+    __disks_duplicate_mounts: >-
+      {{
+        ansible_facts.mounts
+        | selectattr('device', 'in', __disks_matching_devices.stdout_lines | default([]))
+        | selectattr('mount', 'ne', disks_disk_config.mount_path)
+        | map(attribute='mount')
+        | list
+      }}

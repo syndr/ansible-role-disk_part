@@ -1,0 +1,150 @@
+---
+role_name_check: 0
+dependency:
+  name: galaxy
+driver:
+  name: default
+  options:
+    managed: true
+platforms:
+  - name: role-disk_part-ec2-rocky9
+    type: ec2
+    image: ami-02bdea1288da860c4  # Rocky Linux 9 with LVM (Official) - x86_64
+    region: us-west-2
+    instance_type: t3.small
+    ssh_user: molecule_runner
+    vpc_id: vpc-02e78d8e8634151bb
+    vpc_subnet_id: subnet-07a4e58b029a32c0c
+    boot_wait_seconds: 5
+    volumes:
+      - device_name: /dev/xvdb
+        virtual_name: molecule-role-disk_part-ec2-rocky9-fstab
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvdc
+        virtual_name: molecule-role-disk_part-ec2-rocky9-lvm
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvdd
+        virtual_name: molecule-role-disk_part-ec2-rocky9-uuid
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvde
+        virtual_name: molecule-role-disk_part-ec2-rocky9-id
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+    hostvars:
+      org: molecule
+      env: ci
+      # Device paths are dynamically discovered in prepare.yml
+      # and stored in /etc/ansible/facts.d/molecule_disks.fact
+  - name: role-disk_part-ec2-rocky10
+    type: ec2
+    image: ami-03de42ec590769b4e  # Rocky Linux 10 (Official) - x86_64
+    region: us-west-2
+    instance_type: t3.small
+    ssh_user: molecule_runner
+    vpc_id: vpc-02e78d8e8634151bb
+    vpc_subnet_id: subnet-07a4e58b029a32c0c
+    boot_wait_seconds: 5
+    volumes:
+      - device_name: /dev/xvdb
+        virtual_name: molecule-role-disk_part-ec2-rocky10-fstab
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvdc
+        virtual_name: molecule-role-disk_part-ec2-rocky10-lvm
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvdd
+        virtual_name: molecule-role-disk_part-ec2-rocky10-uuid
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+      - device_name: /dev/xvde
+        virtual_name: molecule-role-disk_part-ec2-rocky10-id
+        ebs:
+          volume_type: gp3
+          volume_size: 1
+          delete_on_termination: true
+    hostvars:
+      org: molecule
+      env: ci
+      # Device paths are dynamically discovered in prepare.yml
+      # and stored in /etc/ansible/facts.d/molecule_disks.fact
+provisioner:
+  name: ansible
+  log: True
+  playbooks:
+    create: ../resources/create.yml
+    prepare: ../resources/prepare.yml
+    converge: ../resources/converge.yml
+    side_effect: ../resources/side_effect.yml
+    verify: ../resources/verify.yml
+    cleanup: ../resources/cleanup.yml
+    destroy: ../resources/destroy.yml
+  config_options:
+    defaults:
+      gathering: explicit
+      playbook_vars_root: top
+      verbosity: ${ANSIBLE_VERBOSITY:-0}
+  env:
+    ARA_API_CLIENT: ${ARA_API_CLIENT:-'http'}
+    ARA_API_SERVER: ${ARA_API_SERVER:-'http://localhost:8000'}
+    ARA_DEFAULT_LABELS: ${ARA_DEFAULT_LABELS:-'testing,molecule'}
+    # To use Ara with molecule:
+    #  export the ANSIBLE_CALLBACK_PLUGINS env var with the output of 'python3 -m ara.setup.callback_plugins'
+    ANSIBLE_CALLBACK_PLUGINS: ${ANSIBLE_CALLBACK_PLUGINS}
+    ANSIBLE_DIFF_ALWAYS: ${ANSIBLE_DIFF_ALWAYS:-'False'}
+scenario:
+  create_sequence:
+    - dependency
+    - create
+    - prepare
+  check_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - create
+    - prepare
+    - converge
+    - check
+    - destroy
+  converge_sequence:
+    - dependency
+    - create
+    - prepare
+    - converge
+  destroy_sequence:
+    - dependency
+    - cleanup
+    - destroy
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - side_effect
+    - verify
+    - cleanup
+    - destroy
+verifier:
+  name: ansible
+  enabled: true

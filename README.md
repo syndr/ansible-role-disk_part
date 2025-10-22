@@ -1,12 +1,33 @@
-Disk Part
+disk_part
 =========
+
+[![Role - disk_part](https://github.com/syndr/ansible-role-disk_part/actions/workflows/role-disk_part.yml/badge.svg)](https://github.com/syndr/ansible-role-disk_part/actions/workflows/role-disk_part.yml)
 
 Configure disks on the target host. This includes:
 - Partitioning and formatting
 - Mount points
 
-> [!IMPORTANT]  
+> [!IMPORTANT]
 > This role only supports 1 partition per block device at this time!
+
+How It Works
+------------
+
+Manages disk partitioning, formatting, and mounting with true idempotence. Handles everything from raw block devices to LVM volumes, with intelligent device path resolution that survives reboots and hardware changes.
+
+**Key Features:**
+
+- **Idempotent device paths**: Auto mode preserves existing UUID/ID paths across runs, preventing unnecessary remounts
+- **Persistent device references**: Choose by-uuid (filesystem-based), by-id (hardware-based), or kernel device paths
+- **Flexible mounting**: Deploy via systemd mount units or traditional /etc/fstab
+- **LVM integration**: Optional physical volume, volume group, and logical volume provisioning
+- **Multiple filesystems**: Supports ext4, xfs, btrfs, and swap
+- **State tracking**: Records configuration in `/etc/ansible/facts.d/disk_part.fact` for future runs
+- **Safe operations**: Validates existing mounts, prevents duplicate mounts, and requires explicit force flags for destructive changes
+
+**Flow Diagrams:**
+- [Basic overview](flow_diagram_basic.mmd) - simplified provisioning flow
+- [Detailed architecture](flow_diagram.mmd) - complete decision tree and path resolution logic
 
 Requirements
 ------------
@@ -36,6 +57,11 @@ Role Variables
 #   - mount_path (required): The file system path at which to mount the partition
 #   - mount_type (optional): Method to use to mount the partition (fstab/systemd)
 #   - mount_options (optional): Options to be used when mounting the filesystem (string)
+#   - mount_path_type (optional): Type of persistent device path to use (device/uuid/id/auto, default: auto)
+#      * device: Use raw device path (e.g., /dev/sdb1)
+#      * uuid: Use /dev/disk/by-uuid/ path (filesystem-based, changes on reformat)
+#      * id: Use /dev/disk/by-id/ path (hardware-based, survives reformatting)
+#      * auto: **Idempotent mode** - preserves existing device paths for already-configured volumes, or tries uuid → id → device for new volumes
 #   - resizefs (optional): Grow the filesystem to match the size of the block device (true/false)
 #      * not supported for swap format
 #   - state (optional): Existence of the partition
@@ -68,13 +94,14 @@ disks_partitions:
 
 # Default values ↓
 disks_partition_defaults:
-  format: ext4
+  format: xfs
   format_options: ""
   mount_type: systemd
-  mount_options: ""
+  mount_options: defaults
+  mount_path_type: auto
   force: false
   resizefs: false
-  state: present
+  state: mounted
   systemd_before: ""
   systemd_after: ""
   description: "Disk managed by Ansible"
@@ -85,6 +112,7 @@ disks_partition_defaults:
   lvm_pv_options: ""
   lvm_lv_options: ""
   lvm_pvresize: true
+  lvm_size_percent: 100
 ```
 
 > [!IMPORTANT]
@@ -105,7 +133,7 @@ Example configuration using a traditional `/etc/fstab` mount:
   tasks:
     - name: Configure disks
       ansible.builtin.include_role:
-        name: disk_part
+        name: disks
       vars:
         disks_partitions:
           - device: /dev/sdf
@@ -113,6 +141,7 @@ Example configuration using a traditional `/etc/fstab` mount:
             mount_path: /mnt/test
             mount_type: fstab
             mount_options: defaults,noatime
+            mount_path_type: auto  # Preserves existing paths or uses UUID for new volumes
 ```
 
 Example configuration using a systemd mount unit:  
@@ -122,13 +151,102 @@ Example configuration using a systemd mount unit:
   tasks:
     - name: Configure disks
       ansible.builtin.include_role:
-        name: disk_part
+        name: disks
       vars:
         disks_partitions:
           - device: /dev/sdf
             format: ext4
             mount_path: /mnt/test
             mount_type: systemd
+```
+
+Example configuration with LVM:  
+```yaml
+- name: Make the disks with LVM
+  hosts: all
+  tasks:
+    - name: Configure disks
+      ansible.builtin.include_role:
+        name: disks
+      vars:
+        disks_partitions:
+          - device: /dev/sdf
+            format: xfs
+            mount_path: /mnt/data
+            mount_type: systemd
+            lvm: true
+            lvm_vg_name: data
+            lvm_lv_name: storage
+            # Can still use mount_path_type: uuid or id with LVM
+```
+
+Example using hardware-based by-id paths (useful for unformatted disks):  
+```yaml
+- name: Configure disk with by-id path
+  hosts: all
+  tasks:
+    - name: Configure disks
+      ansible.builtin.include_role:
+        name: disks
+      vars:
+        disks_partitions:
+          - device: /dev/sdb
+            format: xfs
+            mount_path: /mnt/stable
+            mount_type: systemd
+            mount_path_type: id  # Uses /dev/disk/by-id/{hardware-id}
+            # Survives reformatting, unlike UUID
+```
+
+Example using auto mode for blank disks:  
+```yaml
+- name: Configure potentially blank disk
+  hosts: all
+  tasks:
+    - name: Configure disks
+      ansible.builtin.include_role:
+        name: disks
+      vars:
+        disks_partitions:
+          - device: /dev/sdc
+            format: ext4
+            mount_path: /mnt/newdisk
+            mount_type: systemd
+            mount_path_type: auto  # Idempotent: preserves existing paths, tries uuid→id→device for new volumes
+            # Useful for disks that may not have a filesystem yet
+```
+
+Ansible Facts
+-------------
+
+This role saves disk configuration to `/etc/ansible/facts.d/disk_part.fact` on the target host. The facts include:
+
+- All configuration parameters for each disk
+- UUID and device ID values for disks (when `mount_path_type` is set)
+- Actual device paths used for mounting
+
+Example fact data:  
+```json
+[
+  {
+    "device": "/dev/disk/by-uuid/5f2c38d2-c5d5-47cd-a2e9-2f023294b4d0",
+    "format": "ext4",
+    "mount_path": "/mnt/test",
+    "mount_type": "fstab",
+    "mount_path_type": "uuid",
+    "lvm": false
+  },
+  {
+    "device": "/dev/vg-data/lv-storage",
+    "format": "xfs",
+    "mount_path": "/mnt/data",
+    "mount_type": "systemd",
+    "mount_path_type": "device",
+    "lvm": true,
+    "lvm_vg_name": "data",
+    "lvm_lv_name": "storage"
+  }
+]
 ```
 
 License

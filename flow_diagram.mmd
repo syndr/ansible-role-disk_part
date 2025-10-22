@@ -1,0 +1,81 @@
+%%{ init: { 'theme': 'dark', 'themeVariables': { 'primaryColor': '#1e3a8a', 'primaryTextColor': '#f8fafc', 'primaryBorderColor': '#3b82f6', 'lineColor': '#94a3b8', 'secondaryColor': '#475569', 'tertiaryColor': '#0f172a', 'fontFamily': 'monospace', 'clusterBkg': '#1e293b', 'clusterBorder': '#64748b' } } }%%
+flowchart TD
+  A[Role entry: main.yml] --> B[Init: init.yml reset facts validate list]
+  B --> C[Setup mount and local facts]
+  C --> D{Loop disks_partitions}
+  D --> E[manage_disk.yml]
+
+  subgraph ManageDisk
+    E --> E1[init_disk_config.yml merge defaults validate item]
+    E1 --> E1a[Validate device path matches mount_path_type]
+    E1a --> E1b[Detect existing mount from disk_part fact]
+    E1b --> E2[check_state.yml safety]
+    E2 --> E3{state != absent?}
+    E3 -->|No| Eskip((Skip provisioning))
+    E3 -->|Yes| Pstart[Provision]
+    subgraph Provision
+      Pstart --> PathRes{Need path resolution?}
+      PathRes -->|Yes| PathType{mount_path_type}
+      PathType -->|uuid/auto| U2[get_uuid blkid]
+      PathType -->|id/auto| I2[get_device_id by-id discovery]
+      PathType -->|device| U3[Use original device path]
+      U2 --> U3
+      I2 --> U3
+      PathRes -->|No| U3
+      U3 --> LVM{lvm?}
+      LVM -->|Yes| L1[lvm.yml ensure VG/LV set /dev/vg-/lv-]
+      L1 --> PathRes2{Need path resolution after LVM?}
+      PathRes2 -->|Yes| PathType2{mount_path_type}
+      PathType2 -->|uuid/auto| U5[get_uuid blkid+lvs]
+      PathType2 -->|id/auto| I5[get_device_id LVM by-id]
+      PathType2 -->|device| U6[Use LV device path]
+      U5 --> U6
+      I5 --> U6
+      PathRes2 -->|No| U6
+      LVM -->|No| Runtime
+      U6 --> Runtime{Determine runtime device path}
+      Runtime -->|auto mode| AutoCheck{Existing mount found?}
+      AutoCheck -->|Yes| UseExist[Use existing device path]
+      AutoCheck -->|No| UseFallback[Use uuid → id → lvm_id → device]
+      Runtime -->|uuid mode| UseUUID[Use UUID path]
+      Runtime -->|id mode| UseID[Use ID path]
+      Runtime -->|device mode| UseDev[Use kernel device path]
+      UseExist --> FS[Format filesystem]
+      UseFallback --> FS
+      UseUUID --> FS
+      UseID --> FS
+      UseDev --> FS
+      FS --> FAct[Update fact record with resolved paths]
+    end
+    FAct --> MountSel[Use runtime device for mount]
+    Eskip --> MountSel
+    MountSel --> MType{mount_type}
+    MType -->|systemd| Sys[mount_systemd.yml unit ops]
+    MType -->|fstab| Fstab[mount_fstab.yml posix.mount]
+    Sys --> Dup[unmount_disks.yml duplicates]
+    Fstab --> Dup
+    Dup --> FinalFact[Append fact]
+  end
+
+  FinalFact --> SaveBlock[Always: write facts]
+  SaveBlock --> Save[Write disk_part.fact]
+
+  E2 -->|safety fail| Fail[[Abort]]
+  FS -->|use kernel dev path| MountSel
+
+  Note1[Molecule tests validate: auto, uuid, id, device modes]
+  Note1 -.-> PathType
+  Note1 -.-> PathType2
+
+  Note2[Idempotence: auto mode reads from<br/>disk_part fact to preserve configured paths]
+  Note2 -.-> E1b
+  Note2 -.-> AutoCheck
+
+  classDef decision fill:#334155,stroke:#3b82f6,color:#f8fafc;
+  classDef action fill:#1e3a8a,stroke:#3b82f6,color:#f8fafc;
+  classDef terminal fill:#0f172a,stroke:#f43f5e,color:#f8fafc;
+  classDef data fill:#475569,stroke:#94a3b8,color:#f8fafc;
+  class A,B,C,D,E,E1,E1a,E1b,E2,E3,Pstart,U2,U3,L1,U5,U6,I2,I5,FS,FAct,MountSel,MType,Sys,Fstab,Dup,FinalFact,SaveBlock,Save,UseExist,UseFallback,UseUUID,UseID,UseDev action;
+  class Note1,Note2 data;
+  class PathRes,PathType,PathRes2,PathType2,LVM,Runtime,AutoCheck decision;
+  class Eskip,Fail terminal;

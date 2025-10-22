@@ -27,10 +27,22 @@ on:
         required: false
         type: number
         default: 360
+      potato-username:
+        required: false
+        type: string
+        default: ''
       vault-identity:
         required: false
         type: string
         default: ''
+      ansible-verbosity:
+        required: false
+        type: string
+        default: ''
+      ansible-diff:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   molecule-test:
@@ -48,10 +60,15 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          # Install ansible-core first (with version pinning)
-          pip install ansible-core==2.16
-          pip install molecule ansible-lint requests ${{ inputs.python-dependencies }}
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -n "${{ inputs.python-dependencies }}" ]; then pip install ${{ inputs.python-dependencies }}; fi
+
+      - name: Log into AWS
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
 
       - name: Test with Molecule scenario ${{ inputs.scenario }}
         env:
@@ -60,6 +77,10 @@ jobs:
           # Make molecule output colored content (easier to read via GH UI)
           PY_COLORS: 1
           ANSIBLE_FORCE_COLOR: 1
+          # Set verbosity: use input if provided, else 1 if debug mode is enabled, else unset
+          ANSIBLE_VERBOSITY: ${{ inputs.ansible-verbosity != '' && inputs.ansible-verbosity || (runner.debug == '1' && '1' || '') }}
+          # Enable diff mode if requested or when debug mode is enabled
+          ANSIBLE_DIFF_ALWAYS: ${{ (inputs.ansible-diff || runner.debug == '1') && 'True' || '' }}
         timeout-minutes: ${{ inputs.timeout-minutes }}
         working-directory: ${{ inputs.working-directory }}
         run: |

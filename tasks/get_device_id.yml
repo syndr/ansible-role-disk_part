@@ -1,0 +1,134 @@
+---
+# Get the by-id path for the current disk and update the device path
+# This task should only be called for devices that exist and need ID-based mounting
+
+- name: Find by-id path for {{ disks_disk_config.device }}
+  become: true
+  ansible.builtin.shell: |
+    set -e
+    device="{{ disks_disk_config.device }}"
+    # Resolve symlinks to get the actual device
+    if [ -L "$device" ]; then
+      device=$(readlink -f "$device")
+    fi
+    # Get just the device name (e.g., sda1 from /dev/sda1)
+    device_name=$(basename "$device")
+    # Find all by-id entries that point to this device (sorted for consistency)
+    for id_path in $(ls -1 /dev/disk/by-id/* 2>/dev/null | sort); do
+      if [ -L "$id_path" ]; then
+        target=$(readlink -f "$id_path")
+        if [ "$target" = "$device" ]; then
+          # Prefer non-partition entries (e.g., ata-* over ata-*-part1)
+          # and avoid UUID-based IDs
+          if ! echo "$id_path" | grep -q "uuid" && ! echo "$id_path" | grep -q "wwn-"; then
+            echo "$id_path"
+            exit 0
+          fi
+        fi
+      fi
+    done
+    # Fallback to any by-id path if no preferred one found (sorted for consistency)
+    for id_path in $(ls -1 /dev/disk/by-id/* 2>/dev/null | sort); do
+      if [ -L "$id_path" ]; then
+        target=$(readlink -f "$id_path")
+        if [ "$target" = "$device" ]; then
+          echo "$id_path"
+          exit 0
+        fi
+      fi
+    done
+    exit 1
+  args:
+    executable: /bin/bash
+  register: __disks_device_id_output
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Validate device ID was retrieved
+  when: disks_disk_config.mount_path_type in ['id', 'auto']
+  ansible.builtin.assert:
+    that:
+      - __disks_device_id_output.rc == 0
+      - __disks_device_id_output.stdout is defined
+      - __disks_device_id_output.stdout | length > 0
+    fail_msg: "Could not determine by-id path for device {{ disks_disk_config.device }}"
+    success_msg: "Device ID path for {{ disks_disk_config.device }} is {{ __disks_device_id_output.stdout | trim }}"
+
+- name: Update device configuration with by-id path
+  when:
+    - __disks_device_id_output.rc == 0
+    - __disks_device_id_output.stdout | length > 0
+  ansible.builtin.set_fact:
+    disks_disk_config: >-
+      {{
+        disks_disk_config
+        | combine({
+          'kernel_device': disks_disk_config.device,
+          'device_id_path': __disks_device_id_output.stdout | trim
+        })
+      }}
+
+- name: Discover LVM volume by-id path
+  vars:
+    __disks_is_target_lv: >-
+      {{ disks_disk_config.lvm is true and
+         disks_disk_config.device == '/dev/vg-' + disks_disk_config.lvm_vg_name + '/lv-' + disks_disk_config.lvm_lv_name }}
+  when: __disks_is_target_lv
+  block:
+    - name: Find by-id path for LVM volume {{ disks_disk_config.device }}
+      become: true
+      ansible.builtin.shell: |
+        set -e
+        lv_device="{{ disks_disk_config.device }}"
+        # Check if device exists
+        if [ ! -e "$lv_device" ]; then
+          exit 1
+        fi
+        # Resolve to get the actual device
+        if [ -L "$lv_device" ]; then
+          lv_device=$(readlink -f "$lv_device")
+        fi
+        # Find all by-id entries that point to this LVM device (sorted for consistency)
+        for id_path in $(ls -1 /dev/disk/by-id/* 2>/dev/null | sort); do
+          if [ -L "$id_path" ]; then
+            target=$(readlink -f "$id_path")
+            if [ "$target" = "$lv_device" ]; then
+              # LVM volumes often appear as dm-uuid-LVM-*
+              if echo "$id_path" | grep -q "dm-uuid-LVM"; then
+                echo "$id_path"
+                exit 0
+              fi
+            fi
+          fi
+        done
+        # Fallback to any by-id path (sorted for consistency)
+        for id_path in $(ls -1 /dev/disk/by-id/* 2>/dev/null | sort); do
+          if [ -L "$id_path" ]; then
+            target=$(readlink -f "$id_path")
+            if [ "$target" = "$lv_device" ]; then
+              echo "$id_path"
+              exit 0
+            fi
+          fi
+        done
+        exit 1
+      args:
+        executable: /bin/bash
+      register: __disks_lvm_id_output
+      changed_when: false
+      failed_when: false
+
+    - name: Update device configuration with LVM by-id path
+      when:
+        - __disks_lvm_id_output.rc == 0
+        - __disks_lvm_id_output.stdout is defined
+        - __disks_lvm_id_output.stdout | length > 0
+      ansible.builtin.set_fact:
+        disks_disk_config: >-
+          {{
+            disks_disk_config
+            | combine({
+              'lvm_device_id_path': __disks_lvm_id_output.stdout | trim
+            })
+          }}

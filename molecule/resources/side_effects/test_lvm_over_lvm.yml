@@ -1,0 +1,36 @@
+---
+# Test scenario: Attempt LVM creation on device with existing different VG (should fail)
+
+- name: Verify validation passes for clean devices
+  tags: always
+  block:
+    - name: Create LVM on existing LVM device (should fail)
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
+            format: xfs
+            mount_path: /mnt/lvm_test_different
+            mount_type: systemd
+            lvm: true
+            lvm_vg_name: differentvg  # Different VG name to test mismatch validation (no underscores allowed)
+            lvm_lv_name: test
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Fail if the role succeeded when it should have blocked
+      ansible.builtin.fail:
+        msg: "Role should have failed when attempting to create LVM over existing LVM configuration"
+
+  rescue:
+    - name: Validate expected error message for filesystem protection
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result.msg is defined
+          - >-
+            "Device contains other LVM volume groups" in ansible_failed_result.msg or
+            "Device contains existing partitions" in ansible_failed_result.msg
+          - '"force: true" in ansible_failed_result.msg'
+        fail_msg: |
+          Expected error message about existing LVM configuration not found.
+          Actual error: {{ ansible_failed_result.msg | default('No error message') }}
+        success_msg: "✓ Validation correctly blocked LVM creation over existing LVM VG"

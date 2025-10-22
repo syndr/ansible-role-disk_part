@@ -1,0 +1,58 @@
+---
+# Test scenario: Check for duplicate mounts
+# Verifies that no block device is mounted at multiple locations simultaneously
+
+- name: Check for duplicate mounts using canonical device paths
+  tags: always
+  vars:
+    # Will be populated by a task to find duplicate devices
+    __ci_duplicate_mounts: []
+  block:
+    - name: Gather current mount information
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - "mounts"
+
+    - name: Find devices with duplicate mounts
+      loop: "{{ ansible_facts.mounts | selectattr('device', 'search', '^/dev/') | list }}"
+      when: >-
+        (ansible_facts.mounts | selectattr('device', 'equalto', item.device) | list | length) > 1
+        and item.device not in __ci_duplicate_mounts
+      ansible.builtin.set_fact:
+        __ci_duplicate_mounts: >-
+          {{
+            __ci_duplicate_mounts + [item.device]
+          }}
+
+    - name: Duplicate device mounts detected
+      when: __ci_duplicate_mounts | length > 0
+      ansible.builtin.debug:
+        msg: |
+          Found {{ __ci_duplicate_mounts | length }} device(s) with duplicate mounts:
+          {% for device in __ci_duplicate_mounts %}
+          - {{ device }} is mounted at: {{ ansible_facts.mounts | selectattr('device', 'equalto', device) | map(attribute='mount') | join(', ') }}
+          {% endfor %}
+        verbosity: 1
+
+    - name: Assert no duplicate mounts exist
+      ansible.builtin.assert:
+        that:
+          - __ci_duplicate_mounts | length == 0
+        success_msg: >-
+          ✓ No duplicate mounts detected - all block devices are mounted at single locations
+        fail_msg: |
+          ❌ Duplicate mount detection failed successfully!
+          Found {{ __ci_duplicate_mounts | length }} device(s) mounted at multiple locations:
+          {% for device in __ci_duplicate_mounts %}
+          • {{ device }} → {{ ansible_mounts | selectattr('device', 'equalto', device) | map(attribute='mount') | join(', ') }}
+          {% endfor %}
+          
+          Block devices should not be mounted at multiple locations simultaneously.
+          This indicates a failure in the duplicate mount cleanup logic.
+
+    - name: Report duplicate mount check status
+      ansible.builtin.debug:
+        msg: >-
+          ✅ Duplicate mount check complete - verified {{ ansible_facts.mounts | selectattr('device', 'search', '^/dev/') | list | length }}
+          mounted devices have unique mount points

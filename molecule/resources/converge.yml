@@ -1,0 +1,102 @@
+---
+# Verify that the target code runs successfullly.
+# Note that this playbook (converge.yml) must be idempotent!
+
+# Check that the molecule inventory is correctly configured
+- name: Fail if molecule group is missing
+  hosts: localhost
+  tags: always
+  tasks:
+    - name: Print host inventory groups
+      ansible.builtin.debug:
+        msg: "{{ groups }}"
+
+    - name: Assert group existence
+      ansible.builtin.assert:
+        that: "'molecule' in groups"
+        fail_msg: |
+          molecule group was not found inside inventory groups: {{ groups }}
+
+- name: Converge
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Load system facts
+      tags: always
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - "!min"
+          - distribution
+          - local
+
+    - name: Add compatibility options for legacy OS
+      tags: always
+      when: >-
+        ansible_facts.distribution == 'Amazon' and ansible_facts.distribution_major_version == '2' or
+        ansible_facts.distribution == 'CentOS' and ansible_facts.distribution_major_version == '7'
+      ansible.builtin.set_fact:
+        ansible_python_interpreter: /usr/local/bin/python3.10
+
+    - name: Validate discovered disk facts exist
+      tags: always
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.ansible_local.molecule_disks is defined
+          - ansible_facts.ansible_local.molecule_disks.fstab_disk is defined
+          - ansible_facts.ansible_local.molecule_disks.lvm_disk is defined
+        fail_msg: Discovered disk facts not found. Did prepare.yml run successfully?
+        success_msg: >-
+          Using discovered disks: fstab={{ ansible_facts.ansible_local.molecule_disks.fstab_disk }},
+            lvm={{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}
+
+    - name: Load disks role
+      tags: always
+      vars:
+        # Override molecule.yml hostvars with dynamically discovered devices
+        disks_partitions:
+          # Test auto mode with fstab (should gracefully handle blank disk)
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/fstab_test
+            mount_type: fstab
+            mount_path_type: auto
+          # Test auto mode with LVM (should work with blank disk)
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
+            format: xfs
+            lvm: true
+            mount_path: /mnt/lvm_test
+            mount_type: systemd
+            mount_path_type: auto
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Create companion cube files for data integrity testing
+      tags: 
+        - always
+        - molecule-idempotence-notest
+      become: true
+      loop:
+        - path: /mnt/fstab_test/companion_cube.txt
+          filesystem: ext4
+          mount: /mnt/fstab_test
+        - path: /mnt/lvm_test/companion_cube.txt
+          filesystem: xfs
+          mount: /mnt/lvm_test
+      loop_control:
+        loop_var: cube
+        label: "{{ cube.mount }}"
+      ansible.builtin.copy:
+        content: |
+          Test data integrity marker for {{ cube.mount }}
+          Created at: {{ ansible_facts.date_time.iso8601 }}
+          This companion cube should NOT be destroyed by validation tests!
+          
+          The enrichment center reminds you that the companion cube cannot speak.
+          In the event that the companion cube does speak, please disregard its advice.
+        dest: "{{ cube.path }}"
+        mode: '0644'
+        owner: root
+        group: root

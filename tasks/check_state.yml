@@ -1,0 +1,209 @@
+---
+# Check the state of a disk, and validate whether it is safe to continue
+#
+
+- name: Ensure LVM tools are installed
+  become: true
+  ansible.builtin.package:
+    name: lvm2
+    state: present
+  register: __disks_package_result
+  retries: 5
+  delay: 10
+  until: "'Failed to download metadata for repo' not in (__disks_package_result.msg | default(''))"
+
+- name: Gather partition information for target disk
+  become: true
+  ansible.builtin.command:
+    cmd: "lsblk -J -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE {{ disks_disk_config.device }}"
+  register: __disks_lsblk_output
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Compare projected with device configuration and verify it's safe to proceed
+  vars:
+    __disks_blk_info: >-
+      {{
+        (__disks_lsblk_output.stdout | from_json).blockdevices[0]
+        if __disks_lsblk_output.rc == 0
+        else {}
+      }}
+    __disks_has_partitions: >-
+      {{
+        ((__disks_lsblk_output.stdout | from_json).blockdevices[0].children | default([])) | length > 0
+        if __disks_lsblk_output.rc == 0
+        else false
+      }}
+    __disks_device_has_lvm: >-
+      {{
+        __disks_lvm_vg_info.stdout | default('') | trim != ''
+      }}
+    __disks_device_has_our_vg: >-
+      {{
+        __disks_lvm_vg_info is defined and
+        ('vg-' + disks_disk_config.lvm_vg_name) in __disks_lvm_vg_info.stdout
+      }}
+    __disks_device_has_our_lv: >-
+      {{
+        __disks_lvm_lv_info is defined and
+        __disks_lvm_lv_info.rc == 0 and
+        ('lv-' + disks_disk_config.lvm_lv_name) in __disks_lvm_lv_info.stdout
+      }}
+    __disks_device_has_filesystem: >-
+      {{
+        __disks_blk_info.fstype is defined and
+        __disks_blk_info.fstype is not none and
+        __disks_blk_info.fstype | default('') | trim != ''
+        if __disks_lsblk_output.rc == 0
+        else false
+      }}
+    __disks_filesystem_matches: >-
+      {{
+        __disks_device_has_filesystem and
+        (__disks_blk_info.fstype | default('') == disks_disk_config.format | default('ext4'))
+      }}
+    __disks_device_mounted_correctly: >-
+      {{
+        __disks_blk_info.mountpoint is defined and
+        __disks_blk_info.mountpoint == disks_disk_config.mount_path
+      }}
+    __disks_is_already_configured: >-
+      {{
+        __disks_filesystem_matches and
+        __disks_device_mounted_correctly and
+        not (disks_disk_config.lvm | default(false))
+      }}
+    __disks_mount_point_change: >-
+      {{
+        __disks_filesystem_matches and
+        not __disks_device_mounted_correctly and
+        __disks_blk_info.mountpoint is defined and
+        __disks_blk_info.mountpoint != disks_disk_config.mount_path and
+        not (disks_disk_config.lvm | default(false))
+      }}
+    __disks_lvm_mount_point_change: >-
+      {{
+        __disks_device_has_our_vg and
+        __disks_device_has_our_lv and
+        (disks_disk_config.lvm | default(false)) and
+        __disks_blk_info.children is defined and
+        __disks_blk_info.children | length > 0 and
+        __disks_blk_info.children[0].mountpoint is defined and
+        __disks_blk_info.children[0].mountpoint != disks_disk_config.mount_path and
+        (__disks_blk_info.children[0].fstype | default('') == disks_disk_config.format | default('ext4'))
+      }}
+    __disks_lvm_already_configured: >-
+      {{
+        __disks_device_has_our_vg and
+        __disks_device_has_our_lv and
+        (disks_disk_config.lvm | default(false))
+      }}
+    __disks_force_enabled: >-
+      {{
+        disks_disk_config.force | default(false)
+      }}
+    __disks_can_proceed: >-
+      {{
+        (__disks_device_has_our_vg | default(false) and (disks_disk_config.lvm | default(false))) or
+        __disks_is_already_configured | default(false) or
+        __disks_lvm_already_configured | default(false) or
+        __disks_mount_point_change | default(false) or
+        __disks_lvm_mount_point_change | default(false) or
+        not (
+          __disks_has_partitions | default(false) or
+          __disks_device_has_lvm | default(false) or
+          __disks_device_has_filesystem | default(false)
+        ) or
+        __disks_force_enabled | default(false)
+      }}
+  block:
+    - name: Check LVM configuration for device
+      when:
+        - __disks_lsblk_output.rc == 0
+        - __disks_blk_info.type == "disk" or __disks_blk_info.type == "part"
+      block:
+        - name: Check if device is part of LVM
+          become: true
+          ansible.builtin.command:
+            cmd: "pvs --noheadings -o vg_name {{ disks_disk_config.device }}"
+          register: __disks_lvm_vg_info
+          changed_when: false
+          check_mode: false
+          failed_when: false
+
+        - name: Get logical volumes in volume group
+          when: >-
+            __disks_lvm_vg_info.stdout is defined and
+            ('vg-' + disks_disk_config.lvm_vg_name) in __disks_lvm_vg_info.stdout
+          become: true
+          ansible.builtin.command:
+            cmd: "lvs --noheadings -o lv_name vg-{{ disks_disk_config.lvm_vg_name }}"
+          register: __disks_lvm_lv_info
+          changed_when: false
+          check_mode: false
+          failed_when: false
+
+    - name: Debug disk status
+      ansible.builtin.debug:
+        msg: |
+          Device: {{ disks_disk_config.device }}
+          Has partitions: {{ __disks_has_partitions | default(false) }}
+          Has LVM: {{ __disks_device_has_lvm | default(false) }}
+          Has filesystem: {{ __disks_device_has_filesystem | default(false) }}
+          Has our VG: {{ __disks_device_has_our_vg | default(false) }}
+          Has our LV: {{ __disks_device_has_our_lv | default(false) }}
+          LVM VGs found: {{ __disks_lvm_vg_info.stdout_lines | default([]) | map('trim') | join(', ') | default('None', true) }}
+          LVM LVs found: {{ __disks_lvm_lv_info.stdout_lines | default([]) | map('trim') | join(', ') | default('None', true) }}
+          Filesystem matches: {{ __disks_filesystem_matches | default(false) }}
+          Mounted correctly: {{ __disks_device_mounted_correctly | default(false) }}
+          Already configured (non-LVM): {{ __disks_is_already_configured | default(false) }}
+          Mount point change: {{ __disks_mount_point_change | default(false) }}
+          LVM mount point change: {{ __disks_lvm_mount_point_change | default(false) }}
+          LVM already configured: {{ __disks_lvm_already_configured | default(false) }}
+          Force enabled: {{ __disks_force_enabled }}
+          Can proceed: {{ __disks_can_proceed }}
+        verbosity: 1
+
+    - name: Verify it's safe to proceed with disk operations
+      ansible.builtin.assert:
+        that:
+          - "__disks_can_proceed | bool"
+        fail_msg: |
+          Cannot proceed with {{ disks_disk_config.device }} - existing data would be lost:
+          {% if __disks_device_has_lvm | default(false) and not __disks_device_has_our_vg | default(false) %}
+          - Device contains other LVM volume groups
+          {% elif __disks_device_has_lvm | default(false) and __disks_device_has_our_vg | default(false) and not (disks_disk_config.lvm | default(false)) %}
+          - Device contains LVM volume groups (use lvm: true to manage LVM devices)
+          {% elif __disks_has_partitions | default(false) and not __disks_device_has_lvm | default(false) %}
+          - Device contains existing partitions
+          {% elif __disks_device_has_filesystem | default(false) %}
+          - Device contains an existing filesystem ({{ __disks_blk_info.fstype | default('unknown') }})
+          {% if not __disks_filesystem_matches | default(false) %}
+            Expected: {{ disks_disk_config.format | default('UNDEFINED') }}
+          {% endif %}
+          {% if __disks_filesystem_matches | default(false) and not __disks_device_mounted_correctly | default(false) %}
+            Expected mount: {{ disks_disk_config.mount_path }}, Current mount: {{ __disks_blk_info.mountpoint | default('unmounted') }}
+          {% endif %}
+          {% else %}
+          - Device contains existing data
+          {% endif %}
+          Use 'force: true' if you are absolutely certain you want to overwrite this disk.
+        success_msg: |
+          Safe to proceed with {{ disks_disk_config.device }}:
+          {% if __disks_is_already_configured | default(false) %}
+          - Device is already configured correctly (filesystem: {{ disks_disk_config.format }}, mount: {{ disks_disk_config.mount_path }})
+          {% elif __disks_mount_point_change | default(false) %}
+          - Device has correct filesystem ({{ disks_disk_config.format }}), updating mount point to {{ disks_disk_config.mount_path }}
+          {% elif __disks_lvm_already_configured | default(false) %}
+          - LVM is already configured (VG: vg-{{ disks_disk_config.lvm_vg_name }}, LV: lv-{{ disks_disk_config.lvm_lv_name }})
+          {% elif __disks_lvm_mount_point_change | default(false) %}
+          - LVM device configured, updating mount point to {{ disks_disk_config.mount_path }}
+          {% elif __disks_device_has_our_vg | default(false) %}
+          - Device contains our VG (vg-{{ disks_disk_config.lvm_vg_name }}), continuing LVM configuration
+          {% elif __disks_force_enabled | default(false) %}
+          - Force enabled - overwriting existing data
+          {% else %}
+          - Device is empty/unformatted - ready for configuration
+          {% endif %}
+        quiet: false
