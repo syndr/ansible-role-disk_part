@@ -10,20 +10,31 @@
 
 - name: Store initial disk configuration facts
   ansible.builtin.set_fact:
-    __disks_fact_record: "{{ disks_disk_config }}"
+    __disks_fact_record:
+      device: "{{ disks_disk_config.device }}"
+      mount_path: "{{ disks_disk_config.mount_path }}"
+      mount_type: "{{ disks_disk_config.mount_type }}"
+      mount_path_type: "{{ disks_disk_config.mount_path_type }}"
+      format: "{{ disks_disk_config.format }}"
+      mount_options: "{{ disks_disk_config.mount_options }}"
+      state: "{{ disks_disk_config.state }}"
+      description: "{{ disks_disk_config.description }}"
+      lvm: "{{ disks_disk_config.lvm }}"
+      lvm_vg_name: "{{ disks_disk_config.lvm_vg_name }}"
+      lvm_lv_name: "{{ disks_disk_config.lvm_lv_name }}"
     __disks_original_device: "{{ disks_disk_config.device }}"
 
 - name: Detect existing mount device path for this mount point
   ansible.builtin.set_fact:
     __disks_existing_mount_device: >-
       {{
-        (ansible_facts.mounts | default([])
-        | selectattr('mount', 'equalto', disks_disk_config.mount_path)
+        (ansible_facts.ansible_local.disk_part | default([])
+        | selectattr('mount_path', 'equalto', disks_disk_config.mount_path)
         | map(attribute='device')
         | list
         | first)
-        if (ansible_facts.mounts | default([])
-            | selectattr('mount', 'equalto', disks_disk_config.mount_path)
+        if (ansible_facts.ansible_local.disk_part | default([])
+            | selectattr('mount_path', 'equalto', disks_disk_config.mount_path)
             | list
             | length > 0)
         else ''
@@ -151,18 +162,16 @@
           {%- endif -%}
 
     - name: Update disk configuration with resolved paths
-      vars:
-        __disks_fact_record_update: >-
+      ansible.builtin.set_fact:
+        __disks_fact_record: >-
           {{
-            disks_disk_config
+            __disks_fact_record
             | combine({
               'device': __disks_disk_runtime_device,
               'original_device': __disks_original_device,
               'runtime_device': __disks_disk_runtime_device
             })
           }}
-      ansible.builtin.set_fact:
-        __disks_fact_record: "{{ __disks_fact_record | combine(__disks_fact_record_update) }}"
         disks_disk_config: "{{ disks_disk_config | combine({'device': __disks_disk_runtime_device}) }}"
 
 - name: Configure systemd mount

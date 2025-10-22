@@ -13,8 +13,8 @@
     fi
     # Get just the device name (e.g., sda1 from /dev/sda1)
     device_name=$(basename "$device")
-    # Find all by-id entries that point to this device
-    for id_path in /dev/disk/by-id/*; do
+    # Find all by-id entries that point to this device (sorted for consistency)
+    for id_path in $(ls -1 /dev/disk/by-id/* 2>/dev/null | sort); do
       if [ -L "$id_path" ]; then
         target=$(readlink -f "$id_path")
         if [ "$target" = "$device" ]; then
@@ -27,8 +27,8 @@
         fi
       fi
     done
-    # Fallback to any by-id path if no preferred one found
-    for id_path in /dev/disk/by-id/*; do
+    # Fallback to any by-id path if no preferred one found (sorted for consistency)
+    for id_path in $(ls -1 /dev/disk/by-id/* 2>/dev/null | sort); do
       if [ -L "$id_path" ]; then
         target=$(readlink -f "$id_path")
         if [ "$target" = "$device" ]; then
@@ -89,8 +89,8 @@
         if [ -L "$lv_device" ]; then
           lv_device=$(readlink -f "$lv_device")
         fi
-        # Find all by-id entries that point to this LVM device
-        for id_path in /dev/disk/by-id/*; do
+        # Find all by-id entries that point to this LVM device (sorted for consistency)
+        for id_path in $(ls -1 /dev/disk/by-id/* 2>/dev/null | sort); do
           if [ -L "$id_path" ]; then
             target=$(readlink -f "$id_path")
             if [ "$target" = "$lv_device" ]; then
@@ -102,8 +102,8 @@
             fi
           fi
         done
-        # Fallback to any by-id path
-        for id_path in /dev/disk/by-id/*; do
+        # Fallback to any by-id path (sorted for consistency)
+        for id_path in $(ls -1 /dev/disk/by-id/* 2>/dev/null | sort); do
           if [ -L "$id_path" ]; then
             target=$(readlink -f "$id_path")
             if [ "$target" = "$lv_device" ]; then

@@ -8,6 +8,7 @@
   ansible.builtin.setup:
     gather_subset:
       - mounts
+      - local
 
 - name: Configure disks
   block:
