@@ -3,13 +3,21 @@
 name: Role - disk_part
 on:
   pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/role-disk_part.yml'
+      - './**'
+      - '!**/*.md'
+      - '!**/*.mmd'
   push:
     branches:
       - main
     paths:
       - '.github/workflows/role-disk_part.yml'
       - './**'
-      - '!*.md'
+      - '!**/*.md'
+      - '!**/*.mmd'
   workflow_dispatch:
     inputs:
       ansible_verbosity:
