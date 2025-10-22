@@ -35,6 +35,14 @@ on:
         required: false
         type: string
         default: ''
+      ansible-verbosity:
+        required: false
+        type: string
+        default: ''
+      ansible-diff:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   molecule-test:
@@ -69,6 +77,10 @@ jobs:
           # Make molecule output colored content (easier to read via GH UI)
           PY_COLORS: 1
           ANSIBLE_FORCE_COLOR: 1
+          # Set verbosity: use input if provided, else 1 if debug mode is enabled, else unset
+          ANSIBLE_VERBOSITY: ${{ inputs.ansible-verbosity != '' && inputs.ansible-verbosity || (runner.debug == '1' && '1' || '') }}
+          # Enable diff mode if requested or when debug mode is enabled
+          ANSIBLE_DIFF_ALWAYS: ${{ (inputs.ansible-diff || runner.debug == '1') && 'True' || '' }}
         timeout-minutes: ${{ inputs.timeout-minutes }}
         working-directory: ${{ inputs.working-directory }}
         run: |

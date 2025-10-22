@@ -10,6 +10,24 @@ on:
       - '.github/workflows/role-disk_part.yml'
       - './**'
       - '!*.md'
+  workflow_dispatch:
+    inputs:
+      ansible_verbosity:
+        description: 'Ansible verbosity level (0-4)'
+        required: false
+        type: choice
+        options:
+          - '0'
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+        default: '1'
+      ansible_diff:
+        description: 'Enable Ansible diff mode'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   manage-docker_engine:
@@ -24,10 +42,13 @@ jobs:
 
     if: >
       (github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && github.ref_name == 'main'))
+      (github.event_name == 'push' && github.ref_name == 'main') ||
+      github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/_run-molecule-test.yml
     with:
       scenario: ${{ matrix.molecule-scenario }}
       python-version: ${{ matrix.python-version }}
+      ansible-verbosity: ${{ inputs.ansible_verbosity || '' }}
+      ansible-diff: ${{ inputs.ansible_diff || false }}
     secrets: inherit
 
