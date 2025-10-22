@@ -1,26 +1,26 @@
 ---
 
-name: Role - system
+name: Role - disk_part
 on:
   pull_request:
   push:
     branches:
       - main
     paths:
-      - '.github/workflows/role-system.yml'
+      - '.github/workflows/role-disk_part.yml'
       - './**'
       - '!*.md'
 
 jobs:
-  manage-system:
-    name: "Role: docker_engine"
+  manage-docker_engine:
+    name: "Role: disk_part"
     strategy:
       max-parallel: 4
       fail-fast: false
       matrix:
         python-version: ["3.12"]
         molecule-scenario:
-          - role-docker_engine-docker
+          - role-disk_part-ec2
 
     if: >
       (github.event_name == 'pull_request' ||
