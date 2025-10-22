@@ -25,19 +25,32 @@
     __disks_original_device: "{{ disks_disk_config.device }}"
 
 - name: Detect existing mount device path for this mount point
+  vars:
+    # Try disk_part fact first (has configured device paths like UUIDs/IDs)
+    __disk_part_matches: >-
+      {{
+        ansible_facts.ansible_local.disk_part | default([])
+        | selectattr('mount_path', 'equalto', disks_disk_config.mount_path)
+        | list
+      }}
+    # Fall back to kernel mounts for first run of role on already-mounted disk
+    # (adopting existing mount that doesn't have disk_part fact yet)
+    __mounts_matches: >-
+      {{
+        ansible_facts.mounts | default([])
+        | selectattr('mount', 'equalto', disks_disk_config.mount_path)
+        | list
+      }}
   ansible.builtin.set_fact:
     __disks_existing_mount_device: >-
       {{
-        (ansible_facts.ansible_local.disk_part | default([])
-        | selectattr('mount_path', 'equalto', disks_disk_config.mount_path)
-        | map(attribute='device')
-        | list
-        | first)
-        if (ansible_facts.ansible_local.disk_part | default([])
-            | selectattr('mount_path', 'equalto', disks_disk_config.mount_path)
-            | list
-            | length > 0)
-        else ''
+        (__disk_part_matches | first).device
+        if __disk_part_matches | length > 0
+        else (
+          (__mounts_matches | first).device
+          if __mounts_matches | length > 0
+          else ''
+        )
       }}
 
 - name: Things to do only if a disk is present (not to be removed)

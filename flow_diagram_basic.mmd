@@ -1,0 +1,57 @@
+%%{ init: { 'theme': 'dark', 'themeVariables': { 'primaryColor': '#1e3a8a', 'primaryTextColor': '#f8fafc', 'primaryBorderColor': '#3b82f6', 'lineColor': '#94a3b8', 'secondaryColor': '#475569', 'tertiaryColor': '#0f172a', 'fontFamily': 'monospace', 'clusterBkg': '#1e293b', 'clusterBorder': '#64748b' } } }%%
+flowchart TD
+  A[Start: Ansible Role] --> B[Initialize & Validate]
+  B --> C[Gather Facts]
+  C --> D{For each disk}
+
+  D --> E[Merge defaults & validate config]
+  E --> F{Disk already configured?}
+
+  F -->|Yes - Preserve existing| G[Use existing device path from fact]
+  F -->|No - New disk| H[Discover/create device paths]
+
+  G --> I[Safety checks]
+  H --> I
+
+  I --> J{Needs provisioning?}
+  J -->|No - state: absent| K[Cleanup: unmount & remove config]
+  J -->|Yes| L[Provision disk]
+
+  subgraph Provision [Disk Provisioning]
+    L --> L1{LVM enabled?}
+    L1 -->|Yes| L2[Create VG/LV]
+    L1 -->|No| L3[Use raw device]
+    L2 --> L4[Format filesystem]
+    L3 --> L4
+    L4 --> L5{Mount method?}
+    L5 -->|systemd| L6[Create systemd unit]
+    L5 -->|fstab| L7[Add to /etc/fstab]
+    L6 --> L8[Mount volume]
+    L7 --> L8
+  end
+
+  L8 --> M[Update configuration record]
+  K --> M
+
+  M --> N{More disks?}
+  N -->|Yes| D
+  N -->|No| O[Write disk_part.fact]
+  O --> P[Complete]
+
+  Note1[mount_path_type: auto ensures<br/>idempotent device path handling]
+  Note1 -.-> F
+  Note1 -.-> G
+
+  Note2[Supports: ext4, xfs, btrfs, swap<br/>Mount types: systemd, fstab]
+  Note2 -.-> L4
+  Note2 -.-> L5
+
+  classDef decision fill:#334155,stroke:#3b82f6,color:#f8fafc;
+  classDef action fill:#1e3a8a,stroke:#3b82f6,color:#f8fafc;
+  classDef terminal fill:#0f172a,stroke:#22c55e,color:#f8fafc;
+  classDef data fill:#475569,stroke:#94a3b8,color:#f8fafc;
+
+  class A,B,C,E,G,H,I,K,L,L2,L3,L4,L6,L7,L8,M,O action;
+  class D,F,J,L1,L5,N decision;
+  class P terminal;
+  class Note1,Note2 data;

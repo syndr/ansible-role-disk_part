@@ -32,7 +32,7 @@ flowchart TD
       U5 --> U6
       I5 --> U6
       PathRes2 -->|No| U6
-      LVM -->|No| U6
+      LVM -->|No| Runtime
       U6 --> Runtime{Determine runtime device path}
       Runtime -->|auto mode| AutoCheck{Existing mount found?}
       AutoCheck -->|Yes| UseExist[Use existing device path]

@@ -5,8 +5,26 @@ Configure disks on the target host. This includes:
 - Partitioning and formatting
 - Mount points
 
-> [!IMPORTANT]  
+> [!IMPORTANT]
 > This role only supports 1 partition per block device at this time!
+
+How It Works
+------------
+
+This role provides idempotent disk management with support for LVM, multiple filesystems, and flexible mount configurations.
+
+**Quick overview:**
+See [flow_diagram_basic.mmd](flow_diagram_basic.mmd) for a simplified flow diagram showing the main provisioning steps.
+
+**Detailed architecture:**
+For a comprehensive view of all decision points and path resolution logic, see [flow_diagram.mmd](flow_diagram.mmd).
+
+Key features:
+- **Idempotent path handling**: `mount_path_type: auto` preserves existing device paths (UUIDs, IDs) on subsequent runs
+- **Multiple mount methods**: systemd units or /etc/fstab
+- **Persistent device paths**: Use by-uuid, by-id, or kernel device paths
+- **LVM support**: Optional volume group and logical volume management
+- **Configuration tracking**: Saves state to `/etc/ansible/facts.d/disk_part.fact`
 
 Requirements
 ------------
