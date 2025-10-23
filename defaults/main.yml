@@ -55,6 +55,9 @@
 # Allow automatic cleanup of duplicate mount points when mount paths change
 disks_allow_mountpoint_changes: true
 
+# Allow automatic remounting of volumes when configuration changes
+disks_allow_remount: true
+
 # Default values ↓
 
 disks_partition_defaults:

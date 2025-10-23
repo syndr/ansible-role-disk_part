@@ -33,4 +33,5 @@
     - disks_fstab_install_output is changed
     - disks_disk_config.mount_path in (ansible_facts.mounts | map(attribute='mount') | list)
     - disks_disk_config.state == 'mounted'
+    - disks_allow_remount | default(true)
 

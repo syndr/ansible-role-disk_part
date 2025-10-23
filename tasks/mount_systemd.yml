@@ -50,6 +50,7 @@
       when:
         - disks_systemd_install_output is not changed
         - disks_disk_config.state == 'mounted'
+        - disks_allow_remount | default(true)
 
     - name: Disk is remounted
       become: true
@@ -59,6 +60,7 @@
       when:
         - disks_systemd_install_output is changed
         - disks_disk_config.state == 'mounted'
+        - disks_allow_remount | default(true)
 
 - name: Unmount disk
   become: true
