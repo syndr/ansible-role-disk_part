@@ -6,6 +6,15 @@
 - name: Test disks_allow_remount flag for systemd mounts
   tags: always
   block:
+    - name: Ensure mount is running with original configuration
+      vars:
+        disks_partitions:
+          - "{{ ci_lvm_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.lvm_disk
+            }) }}"
+      ansible.builtin.include_role:
+        name: disk_part
+
     - name: Gather current systemd service state before test
       ansible.builtin.service_facts:
 
@@ -102,6 +111,15 @@
 - name: Test disks_allow_remount flag for fstab mounts
   tags: always
   block:
+    - name: Ensure fstab mount is configured with original configuration
+      vars:
+        disks_partitions:
+          - "{{ ci_fstab_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.fstab_disk
+            }) }}"
+      ansible.builtin.include_role:
+        name: disk_part
+
     - name: Gather current mount information
       ansible.builtin.setup:
         gather_subset:
