@@ -180,3 +180,14 @@
         - always
         - auto_path_preservation
       ansible.builtin.include_tasks: side_effects/test_auto_path_preservation.yml
+
+- name: Test disks_allow_remount flag
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Execute remount control test
+      tags:
+        - always
+        - remount_control
+      ansible.builtin.include_tasks: side_effects/test_remount_control.yml

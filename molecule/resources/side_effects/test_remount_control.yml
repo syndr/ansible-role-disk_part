@@ -1,0 +1,164 @@
+---
+# Test scenario: Verify disks_allow_remount flag prevents automatic remounting
+# Validates that when disks_allow_remount: false, configuration changes are
+# applied but volumes are not automatically remounted
+
+- name: Test disks_allow_remount flag for systemd mounts
+  tags: always
+  block:
+    - name: Gather current systemd service state before test
+      ansible.builtin.service_facts:
+
+    - name: Load disk_part facts
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - local
+
+    - name: Capture initial systemd unit configuration
+      become: true
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/mnt-lvm_test.mount
+      register: __test_initial_systemd_unit
+
+    - name: Change configuration to trigger unit file update
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
+            format: xfs
+            lvm: true
+            lvm_vg_name: data
+            lvm_lv_name: data
+            mount_path: /mnt/lvm_test
+            mount_type: systemd
+            mount_path_type: auto
+            description: "Modified description to trigger update"
+            systemd_before: "docker.service"
+        disks_allow_remount: false
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Capture updated systemd unit configuration
+      become: true
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/mnt-lvm_test.mount
+      register: __test_updated_systemd_unit
+
+    - name: Verify systemd unit was updated
+      ansible.builtin.assert:
+        that:
+          - __test_updated_systemd_unit.content != __test_initial_systemd_unit.content
+        fail_msg: "Systemd unit file was not updated when configuration changed"
+        success_msg: "✓ Systemd unit file was updated as expected"
+
+    - name: Gather service state after configuration change
+      ansible.builtin.service_facts:
+
+    - name: Verify mount is still in original state (not restarted)
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['mnt-lvm_test.mount'].state == 'running'
+        fail_msg: |
+          Mount state check failed. Expected mount to remain running without restart.
+          Current state: {{ ansible_facts.services['mnt-lvm_test.mount'].state }}
+        success_msg: "✓ Mount remained in running state (not restarted)"
+
+    - name: Verify companion cube still accessible (mount not disrupted)
+      become: true
+      ansible.builtin.stat:
+        path: /mnt/lvm_test/companion_cube.txt
+      register: __lvm_companion_cube
+
+    - name: Ensure companion cube is accessible
+      ansible.builtin.assert:
+        that:
+          - __lvm_companion_cube.stat.exists
+        fail_msg: "Companion cube not accessible - mount may have been disrupted"
+        success_msg: "✓ Data remained accessible (no remount occurred)"
+
+    - name: Restore original configuration with remount enabled
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
+            format: xfs
+            lvm: true
+            lvm_vg_name: data
+            lvm_lv_name: data
+            mount_path: /mnt/lvm_test
+            mount_type: systemd
+            mount_path_type: auto
+            description: "Disk managed by Ansible"
+        disks_allow_remount: true
+      ansible.builtin.include_role:
+        name: disk_part
+
+- name: Test disks_allow_remount flag for fstab mounts
+  tags: always
+  block:
+    - name: Gather current mount information
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+          - local
+
+    - name: Capture initial fstab configuration
+      become: true
+      ansible.builtin.slurp:
+        src: /etc/fstab
+      register: __test_initial_fstab
+
+    - name: Change fstab mount options to trigger update
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/fstab_test
+            mount_type: fstab
+            mount_path_type: auto
+            mount_options: "defaults,noatime"
+        disks_allow_remount: false
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Capture updated fstab configuration
+      become: true
+      ansible.builtin.slurp:
+        src: /etc/fstab
+      register: __test_updated_fstab
+
+    - name: Verify fstab was updated
+      ansible.builtin.assert:
+        that:
+          - __test_updated_fstab.content != __test_initial_fstab.content
+          - "'noatime' in (__test_updated_fstab.content | b64decode)"
+        fail_msg: "Fstab was not updated when mount_options changed"
+        success_msg: "✓ Fstab was updated with new mount options"
+
+    - name: Verify fstab companion cube still accessible (no remount)
+      become: true
+      ansible.builtin.stat:
+        path: /mnt/fstab_test/companion_cube.txt
+      register: __fstab_companion_cube
+
+    - name: Ensure fstab companion cube is accessible
+      ansible.builtin.assert:
+        that:
+          - __fstab_companion_cube.stat.exists
+        fail_msg: "Companion cube not accessible - mount may have been disrupted"
+        success_msg: "✓ Fstab mount data remained accessible (no remount occurred)"
+
+    - name: Restore original fstab configuration
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/fstab_test
+            mount_type: fstab
+            mount_path_type: auto
+            mount_options: "defaults"
+        disks_allow_remount: true
+      ansible.builtin.include_role:
+        name: disk_part
