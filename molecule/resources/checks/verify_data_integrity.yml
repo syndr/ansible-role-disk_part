@@ -45,11 +45,49 @@
         | list
       }}
   block:
+    - name: Gather mount information
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
     - name: Check if companion cube files exist
       loop: "{{ ci_companion_cubes }}"
       ansible.builtin.stat:
         path: "{{ item }}"
       register: companion_cubes_exist
+
+    - name: Verify companion cubes are on mounted filesystems (not root partition)
+      loop: "{{ companion_cubes_exist.results }}"
+      loop_control:
+        loop_var: cube
+        label: "{{ cube.item }}"
+      when: cube.stat.exists
+      vars:
+        cube_path: "{{ cube.item }}"
+        cube_mount_point: "{{ cube_path | dirname }}"
+        # Find the mount that contains this file
+        matching_mount: >-
+          {{
+            ansible_facts.mounts
+            | selectattr('mount', 'equalto', cube_mount_point)
+            | first
+            | default({})
+          }}
+        cube_device: "{{ cube.stat.dev }}"
+        mount_device: "{{ matching_mount.device | default('') }}"
+      ansible.builtin.assert:
+        that:
+          - matching_mount | length > 0
+          - cube_mount_point in (ansible_facts.mounts | map(attribute='mount') | list)
+        fail_msg: |
+          Companion cube {{ cube_path }} is NOT on a mounted filesystem!
+          It may be on the root partition at the mount point directory.
+          Mount point: {{ cube_mount_point }}
+          File device: {{ cube_device }}
+          Expected mount: {{ cube_mount_point }}
+          Current mounts: {{ ansible_facts.mounts | map(attribute='mount') | list }}
+        success_msg: "✓ {{ cube_path }} is on mounted filesystem {{ cube_mount_point }}"
 
     - name: Read companion cube files if they exist
       loop: "{{ companion_cubes_exist.results }}"
