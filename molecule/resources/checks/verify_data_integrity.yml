@@ -8,6 +8,8 @@
     ci_companion_cubes:
       - /mnt/fstab_test/companion_cube.txt
       - /mnt/lvm_test/companion_cube.txt
+      - /mnt/uuid_test/companion_cube.txt
+      - /mnt/id_test/companion_cube.txt
 
     # Beware premature evaluation of these vars 🠗
     existing_cubes: >-

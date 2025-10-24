@@ -68,69 +68,6 @@
           - /mnt/lvm_test_new/companion_cube.txt
       ansible.builtin.include_tasks: checks/verify_data_integrity.yml
 
-- name: Test mount_path_type variations
-  hosts: molecule
-  vars:
-    ansible_user: molecule_runner
-  tasks:
-    - name: Load system facts for additional disk discovery
-      ansible.builtin.setup:
-        gather_subset:
-          - "!all"
-          - "!min"
-          - local
-
-    - name: Test mount_path_type uuid mode (on formatted disk)
-      vars:
-        disks_partitions:
-          - "{{ ci_uuid_cfg | combine({
-              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk
-            }) }}"
-      ansible.builtin.include_role:
-        name: disk_part
-
-    - name: Test mount_path_type id mode
-      vars:
-        disks_partitions:
-          - "{{ ci_id_cfg | combine({
-              'device': ansible_facts.ansible_local.molecule_disks.id_disk
-            }) }}"
-      ansible.builtin.include_role:
-        name: disk_part
-
-    - name: Verify mount_path_type test mounts are working
-      ansible.builtin.setup:
-        gather_subset:
-          - "!all"
-          - mounts
-
-    - name: Create test files in additional mount points
-      become: true
-      loop:
-        - /mnt/uuid_test/uuid_test.txt
-        - /mnt/id_test/id_test.txt
-      ansible.builtin.copy:
-        content: |
-          Mount path type test file
-          Created at: {{ ansible_facts.date_time.iso8601 }}
-          Mount point: {{ item | dirname }}
-        dest: "{{ item }}"
-        mode: '0644'
-
-    - name: Clean up additional test mounts for verify phase
-      vars:
-        disks_partitions:
-          - "{{ ci_uuid_cfg | combine({
-              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk,
-              'state': 'absent'
-            }) }}"
-          - "{{ ci_id_cfg | combine({
-              'device': ansible_facts.ansible_local.molecule_disks.id_disk,
-              'state': 'absent'
-            }) }}"
-      ansible.builtin.include_role:
-        name: disk_part
-
 - name: Re-run with default configuration (match expected for 'verify' phase)
   hosts: molecule
   vars:
@@ -146,6 +83,12 @@
             }) }}"
           - "{{ ci_lvm_cfg | combine({
               'device': ansible_facts.ansible_local.molecule_disks.lvm_disk
+            }) }}"
+          - "{{ ci_uuid_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk
+            }) }}"
+          - "{{ ci_id_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.id_disk
             }) }}"
       ansible.builtin.include_role:
         name: disk_part
@@ -171,3 +114,14 @@
         - always
         - remount_control
       ansible.builtin.include_tasks: side_effects/test_remount_control.yml
+
+- name: Test state absent functionality
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Execute absent state test
+      tags:
+        - always
+        - absent_state
+      ansible.builtin.include_tasks: side_effects/test_absent_state.yml

@@ -1,0 +1,229 @@
+---
+# Test scenario: Verify state: absent properly removes mounts and cleans up configuration
+# Validates that mounts can be removed and systemd units are properly cleaned up
+
+- name: Test state absent functionality for systemd mounts
+  tags: always
+  block:
+    - name: Load system facts
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - local
+
+    - name: Create temporary test mount (systemd)
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/absent_test_systemd
+            mount_type: systemd
+            mount_path_type: uuid
+            state: mounted
+            description: "Temporary mount for absent state testing"
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Verify temporary systemd mount is active
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Assert temporary systemd mount exists
+      ansible.builtin.assert:
+        that:
+          - "'/mnt/absent_test_systemd' in (ansible_facts.mounts | map(attribute='mount') | list)"
+        fail_msg: "Temporary systemd mount was not created"
+        success_msg: "✓ Temporary systemd mount created successfully"
+
+    - name: Create test file in temporary mount
+      become: true
+      ansible.builtin.copy:
+        content: |
+          This is a test file for absent state validation
+          Created at: {{ ansible_facts.date_time.iso8601 }}
+        dest: /mnt/absent_test_systemd/absent_test.txt
+        mode: '0644'
+
+    - name: Verify test file exists
+      ansible.builtin.stat:
+        path: /mnt/absent_test_systemd/absent_test.txt
+      register: __absent_test_file
+
+    - name: Assert test file is accessible
+      ansible.builtin.assert:
+        that:
+          - __absent_test_file.stat.exists
+        fail_msg: "Test file could not be created in temporary mount"
+        success_msg: "✓ Test file created in temporary mount"
+
+    - name: Generate systemd unit name for verification
+      ansible.builtin.command:
+        cmd: 'systemd-escape -p --suffix=mount "/mnt/absent_test_systemd"'
+      register: __absent_test_unit_name_raw
+      changed_when: false
+
+    - name: Set systemd unit name fact
+      ansible.builtin.set_fact:
+        __absent_test_unit_name: "{{ __absent_test_unit_name_raw.stdout | trim }}"
+
+    - name: Verify systemd unit file exists before removal
+      become: true
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ __absent_test_unit_name }}"
+      register: __absent_test_unit_before
+
+    - name: Assert systemd unit exists
+      ansible.builtin.assert:
+        that:
+          - __absent_test_unit_before.stat.exists
+        fail_msg: "Systemd unit file was not created"
+        success_msg: "✓ Systemd unit file exists"
+
+    - name: Remove temporary mount with state absent
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
+            format: ext4
+            lvm: false
+            mount_path: /mnt/absent_test_systemd
+            mount_type: systemd
+            mount_path_type: uuid
+            state: absent
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Gather mount information after removal
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Verify mount was removed
+      ansible.builtin.assert:
+        that:
+          - "'/mnt/absent_test_systemd' not in (ansible_facts.mounts | map(attribute='mount') | list)"
+        fail_msg: "Mount was not removed after state: absent"
+        success_msg: "✓ Mount successfully removed"
+
+    - name: Verify systemd unit file was removed
+      become: true
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ __absent_test_unit_name }}"
+      register: __absent_test_unit_after
+
+    - name: Assert systemd unit was cleaned up
+      ansible.builtin.assert:
+        that:
+          - not __absent_test_unit_after.stat.exists
+        fail_msg: "Systemd unit file was not removed after state: absent"
+        success_msg: "✓ Systemd unit file successfully removed"
+
+    - name: Restore original uuid_test partition
+      vars:
+        disks_partitions:
+          - "{{ ci_uuid_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk
+            }) }}"
+      ansible.builtin.include_role:
+        name: disk_part
+
+- name: Test state absent functionality for fstab mounts
+  tags: always
+  block:
+    - name: Load system facts
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - local
+
+    - name: Create temporary test mount (fstab)
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.id_disk }}"
+            format: xfs
+            lvm: false
+            mount_path: /mnt/absent_test_fstab
+            mount_type: fstab
+            mount_path_type: id
+            state: mounted
+            mount_options: defaults
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Verify temporary fstab mount is active
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Assert temporary fstab mount exists
+      ansible.builtin.assert:
+        that:
+          - "'/mnt/absent_test_fstab' in (ansible_facts.mounts | map(attribute='mount') | list)"
+        fail_msg: "Temporary fstab mount was not created"
+        success_msg: "✓ Temporary fstab mount created successfully"
+
+    - name: Capture fstab before removal
+      become: true
+      ansible.builtin.slurp:
+        src: /etc/fstab
+      register: __fstab_before_removal
+
+    - name: Verify fstab entry exists
+      ansible.builtin.assert:
+        that:
+          - "'/mnt/absent_test_fstab' in (__fstab_before_removal.content | b64decode)"
+        fail_msg: "Fstab entry was not created"
+        success_msg: "✓ Fstab entry exists"
+
+    - name: Remove temporary fstab mount with state absent
+      vars:
+        disks_partitions:
+          - device: "{{ ansible_facts.ansible_local.molecule_disks.id_disk }}"
+            format: xfs
+            lvm: false
+            mount_path: /mnt/absent_test_fstab
+            mount_type: fstab
+            mount_path_type: id
+            state: absent
+            mount_options: defaults
+      ansible.builtin.include_role:
+        name: disk_part
+
+    - name: Gather mount information after fstab removal
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - mounts
+
+    - name: Verify fstab mount was removed
+      ansible.builtin.assert:
+        that:
+          - "'/mnt/absent_test_fstab' not in (ansible_facts.mounts | map(attribute='mount') | list)"
+        fail_msg: "Fstab mount was not removed after state: absent"
+        success_msg: "✓ Fstab mount successfully removed"
+
+    - name: Capture fstab after removal
+      become: true
+      ansible.builtin.slurp:
+        src: /etc/fstab
+      register: __fstab_after_removal
+
+    - name: Verify fstab entry was removed
+      ansible.builtin.assert:
+        that:
+          - "'/mnt/absent_test_fstab' not in (__fstab_after_removal.content | b64decode)"
+        fail_msg: "Fstab entry was not removed after state: absent"
+        success_msg: "✓ Fstab entry successfully removed"
+
+    - name: Restore original id_test partition
+      vars:
+        disks_partitions:
+          - "{{ ci_id_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.id_disk
+            }) }}"
+      ansible.builtin.include_role:
+        name: disk_part

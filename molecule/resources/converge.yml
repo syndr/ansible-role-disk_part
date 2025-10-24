@@ -64,11 +64,19 @@
           - "{{ ci_lvm_cfg | combine({
               'device': ansible_facts.ansible_local.molecule_disks.lvm_disk
             }) }}"
+          # Test uuid mount_path_type
+          - "{{ ci_uuid_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk
+            }) }}"
+          # Test id mount_path_type
+          - "{{ ci_id_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.id_disk
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 
     - name: Create companion cube files for data integrity testing
-      tags: 
+      tags:
         - always
         - molecule-idempotence-notest
       become: true
@@ -79,6 +87,12 @@
         - path: /mnt/lvm_test/companion_cube.txt
           filesystem: xfs
           mount: /mnt/lvm_test
+        - path: /mnt/uuid_test/companion_cube.txt
+          filesystem: ext4
+          mount: /mnt/uuid_test
+        - path: /mnt/id_test/companion_cube.txt
+          filesystem: xfs
+          mount: /mnt/id_test
       loop_control:
         loop_var: cube
         label: "{{ cube.mount }}"
@@ -87,7 +101,7 @@
           Test data integrity marker for {{ cube.mount }}
           Created at: {{ ansible_facts.date_time.iso8601 }}
           This companion cube should NOT be destroyed by validation tests!
-          
+
           The enrichment center reminds you that the companion cube cannot speak.
           In the event that the companion cube does speak, please disregard its advice.
         dest: "{{ cube.path }}"
