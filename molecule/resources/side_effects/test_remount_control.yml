@@ -21,22 +21,26 @@
         src: /etc/systemd/system/mnt-lvm_test.mount
       register: __test_initial_systemd_unit
 
-    - name: Change configuration to trigger unit file update
-      vars:
-        disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
-            format: xfs
-            lvm: true
-            lvm_vg_name: data
-            lvm_lv_name: data
-            mount_path: /mnt/lvm_test
-            mount_type: systemd
-            mount_path_type: auto
-            description: "Modified description to trigger update"
-            systemd_before: "docker.service"
-        disks_allow_remount: false
-      ansible.builtin.include_role:
-        name: disk_part
+    - name: Change configuration to trigger unit file update (without remount)
+      block:
+        - name: Run role with remount disabled
+          vars:
+            disks_partitions:
+              - "{{ ci_lvm_cfg | combine({
+                  'device': ansible_facts.ansible_local.molecule_disks.lvm_disk,
+                  'description': 'Modified description to trigger update',
+                  'systemd_before': 'docker.service'
+                }) }}"
+            disks_allow_remount: false
+          ansible.builtin.include_role:
+            name: disk_part
+      rescue:
+        - name: Fail if role errored when remount disabled
+          ansible.builtin.fail:
+            msg: |
+              Role failed when disks_allow_remount: false. The role should complete
+              successfully even when remounting is disabled.
+              Error: {{ ansible_failed_result }}
 
     - name: Capture updated systemd unit configuration
       become: true
@@ -77,20 +81,22 @@
         success_msg: "✓ Data remained accessible (no remount occurred)"
 
     - name: Restore original configuration with remount enabled
-      vars:
-        disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
-            format: xfs
-            lvm: true
-            lvm_vg_name: data
-            lvm_lv_name: data
-            mount_path: /mnt/lvm_test
-            mount_type: systemd
-            mount_path_type: auto
-            description: "Disk managed by Ansible"
-        disks_allow_remount: true
-      ansible.builtin.include_role:
-        name: disk_part
+      block:
+        - name: Run role to restore config
+          vars:
+            disks_partitions:
+              - "{{ ci_lvm_cfg | combine({
+                  'device': ansible_facts.ansible_local.molecule_disks.lvm_disk
+                }) }}"
+            disks_allow_remount: true
+          ansible.builtin.include_role:
+            name: disk_part
+      rescue:
+        - name: Fail if role errored during restoration
+          ansible.builtin.fail:
+            msg: |
+              Role failed when restoring original configuration.
+              Error: {{ ansible_failed_result }}
 
 - name: Test disks_allow_remount flag for fstab mounts
   tags: always
@@ -108,19 +114,25 @@
         src: /etc/fstab
       register: __test_initial_fstab
 
-    - name: Change fstab mount options to trigger update
-      vars:
-        disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/fstab_test
-            mount_type: fstab
-            mount_path_type: auto
-            mount_options: "defaults,noatime"
-        disks_allow_remount: false
-      ansible.builtin.include_role:
-        name: disk_part
+    - name: Change fstab mount options to trigger update (without remount)
+      block:
+        - name: Run role with fstab remount disabled
+          vars:
+            disks_partitions:
+              - "{{ ci_fstab_cfg | combine({
+                  'device': ansible_facts.ansible_local.molecule_disks.fstab_disk,
+                  'mount_options': 'defaults,noatime'
+                }) }}"
+            disks_allow_remount: false
+          ansible.builtin.include_role:
+            name: disk_part
+      rescue:
+        - name: Fail if role errored when fstab remount disabled
+          ansible.builtin.fail:
+            msg: |
+              Role failed when disks_allow_remount: false for fstab mount.
+              The role should complete successfully even when remounting is disabled.
+              Error: {{ ansible_failed_result }}
 
     - name: Capture updated fstab configuration
       become: true
@@ -150,15 +162,19 @@
         success_msg: "✓ Fstab mount data remained accessible (no remount occurred)"
 
     - name: Restore original fstab configuration
-      vars:
-        disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/fstab_test
-            mount_type: fstab
-            mount_path_type: auto
-            mount_options: "defaults"
-        disks_allow_remount: true
-      ansible.builtin.include_role:
-        name: disk_part
+      block:
+        - name: Run role to restore fstab config
+          vars:
+            disks_partitions:
+              - "{{ ci_fstab_cfg | combine({
+                  'device': ansible_facts.ansible_local.molecule_disks.fstab_disk
+                }) }}"
+            disks_allow_remount: true
+          ansible.builtin.include_role:
+            name: disk_part
+      rescue:
+        - name: Fail if role errored during fstab restoration
+          ansible.builtin.fail:
+            msg: |
+              Role failed when restoring original fstab configuration.
+              Error: {{ ansible_failed_result }}

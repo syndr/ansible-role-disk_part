@@ -7,13 +7,12 @@
     - name: Create LVM on existing LVM device (should fail)
       vars:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
-            format: xfs
-            mount_path: /mnt/lvm_test_different
-            mount_type: systemd
-            lvm: true
-            lvm_vg_name: differentvg  # Different VG name to test mismatch validation (no underscores allowed)
-            lvm_lv_name: test
+          - "{{ ci_lvm_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.lvm_disk,
+              'mount_path': '/mnt/lvm_test_different',
+              'lvm_vg_name': 'differentvg',
+              'lvm_lv_name': 'test'
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 

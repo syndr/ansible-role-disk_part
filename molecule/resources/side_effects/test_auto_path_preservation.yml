@@ -38,12 +38,9 @@
     - name: Re-run role with mount_path_type auto on existing fstab mount
       vars:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/fstab_test
-            mount_type: fstab
-            mount_path_type: auto
+          - "{{ ci_fstab_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.fstab_disk
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 
@@ -128,14 +125,9 @@
     - name: Re-run role with mount_path_type auto on existing LVM mount
       vars:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
-            format: xfs
-            lvm: true
-            lvm_vg_name: data
-            lvm_lv_name: data
-            mount_path: /mnt/lvm_test
-            mount_type: systemd
-            mount_path_type: auto
+          - "{{ ci_lvm_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.lvm_disk
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 

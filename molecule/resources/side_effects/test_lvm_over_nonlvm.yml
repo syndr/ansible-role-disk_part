@@ -8,13 +8,13 @@
     - name: Attempt to create LVM over existing filesystem (should fail)
       vars:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
-            format: ext4
-            mount_path: /mnt/lvm_test1
-            mount_type: fstab
-            lvm: true
-            lvm_vg_name: data
-            lvm_lv_name: disk1
+          - "{{ ci_lvm_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.fstab_disk,
+              'format': 'ext4',
+              'mount_path': '/mnt/lvm_test1',
+              'mount_type': 'fstab',
+              'lvm_lv_name': 'disk1'
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 

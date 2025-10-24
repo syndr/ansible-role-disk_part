@@ -83,26 +83,18 @@
     - name: Test mount_path_type uuid mode (on formatted disk)
       vars:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/uuid_test
-            mount_type: systemd
-            mount_path_type: uuid
-            state: mounted
+          - "{{ ci_uuid_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 
     - name: Test mount_path_type id mode
       vars:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.id_disk }}"
-            format: xfs
-            lvm: false
-            mount_path: /mnt/id_test
-            mount_type: systemd
-            mount_path_type: id
-            state: mounted
+          - "{{ ci_id_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.id_disk
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 
@@ -128,20 +120,14 @@
     - name: Clean up additional test mounts for verify phase
       vars:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/uuid_test
-            mount_type: systemd
-            mount_path_type: uuid
-            state: absent
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.id_disk }}"
-            format: xfs
-            lvm: false
-            mount_path: /mnt/id_test
-            mount_type: systemd
-            mount_path_type: id
-            state: absent
+          - "{{ ci_uuid_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk,
+              'state': 'absent'
+            }) }}"
+          - "{{ ci_id_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.id_disk,
+              'state': 'absent'
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 
@@ -155,18 +141,12 @@
       vars:
         # This should match config in converge.yml
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/fstab_test
-            mount_type: fstab
-            mount_path_type: auto
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
-            format: xfs
-            lvm: true
-            mount_path: /mnt/lvm_test
-            mount_type: systemd
-            mount_path_type: auto
+          - "{{ ci_fstab_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.fstab_disk
+            }) }}"
+          - "{{ ci_lvm_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.lvm_disk
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 
