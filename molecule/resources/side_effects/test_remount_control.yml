@@ -61,10 +61,11 @@
     - name: Verify mount is still in original state (not restarted)
       ansible.builtin.assert:
         that:
+          - "'mnt-lvm_test.mount' in ansible_facts.services"
           - ansible_facts.services['mnt-lvm_test.mount'].state == 'running'
         fail_msg: |
           Mount state check failed. Expected mount to remain running without restart.
-          Current state: {{ ansible_facts.services['mnt-lvm_test.mount'].state }}
+          Current state: {{ ansible_facts.services.get('mnt-lvm_test.mount', {}).get('state', 'not found') }}
         success_msg: "✓ Mount remained in running state (not restarted)"
 
     - name: Verify companion cube still accessible (mount not disrupted)
