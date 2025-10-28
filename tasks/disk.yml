@@ -30,12 +30,12 @@
               - "mounts"
 
         - name: Check for mount point overlap
-          ansible.builtin.set_fact:
-            disks_current_matching_mount: "{{ item }}"
           when: item.mount == disks_disk_config.mount_path
-          loop: "{{ ansible_mounts }}"
+          loop: "{{ ansible_facts.mounts }}"
           loop_control:
             label: item.mount
+          ansible.builtin.set_fact:
+            disks_current_matching_mount: "{{ item }}"
 
         - name: Unmount overlapping partition
           become: true

@@ -2,16 +2,18 @@
 # Manage a partition mount via /etc/fstab
 
 - name: Gather mount information for duplicate detection
+  when: disks_allow_mountpoint_changes | default(true)
   ansible.builtin.setup:
     gather_subset:
       - "!all"
       - "mounts"
-  when: disks_allow_mountpoint_changes | default(true)
 
 - name: Check for duplicate mounts before configuring systemd mount
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_disks.yml"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_duplicates.yml"
 
 - name: Configure /etc/fstab mount point ({{ disks_disk_config.mount_path }})
+  when:
+    - disks_disk_config.state not in ["absent", "unmounted"]
   become: true
   ansible.posix.mount:
     path: "{{ disks_disk_config.mount_path }}"
@@ -25,13 +27,20 @@
 # If disk was already mounted, remount if config changed
 # TODO double check whether posix.mount does this internally already
 - name: Add disk to remount queue
-  become: true
-  ansible.posix.mount:
-    path: "{{ disks_disk_config.mount_path }}"
-    state: remounted
   when:
     - disks_fstab_install_output is changed
     - disks_disk_config.mount_path in (ansible_facts.mounts | map(attribute='mount') | list)
     - disks_disk_config.state == 'mounted'
     - disks_allow_remount | default(true)
+  become: true
+  ansible.posix.mount:
+    path: "{{ disks_disk_config.mount_path }}"
+    state: remounted
 
+- name: Unmount disk
+  when: disks_disk_config.state in ["absent", "unmounted"]
+  vars:
+    __disks_unmount_mount_path: "{{ disks_disk_config.mount_path }}"
+    __disks_unmount_remove_config: "{{ disks_disk_config.state == 'absent' }}"
+    __disks_unmount_mount_type: "fstab"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_disk.yml"

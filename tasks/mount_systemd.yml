@@ -1,9 +1,6 @@
 ---
 # Mount a partition using a systemd unit
 
-- name: Get system services
-  ansible.builtin.service_facts:
-
 - name: Gather mount information for duplicate detection
   ansible.builtin.setup:
     gather_subset:
@@ -21,7 +18,7 @@
     disks_systemd_filename: "{{ disks_systemd_filename_raw.stdout | trim }}"
 
 - name: Check for duplicate mounts before configuring systemd mount
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_disks.yml"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_duplicates.yml"
 
 - name: Configure disk mount
   when: disks_disk_config.state in ['present', 'mounted']
@@ -36,45 +33,31 @@
     # NOTE it's desired to mount/remount disks in-line in order to ensure that they are accessible for later plays
     #      an argument could be made for using flush_handlers at the end of this role, but here we are...
 
-    - name: Systemd service files are reloaded
-      become: true
-      ansible.builtin.systemd_service:
-        daemon_reload: true
-      when: disks_systemd_install_output is changed     # linters will complain about this 😒
-
     - name: Disk is mounted
+      when:
+        - disks_systemd_install_output is not changed
+        - disks_disk_config.state == 'mounted'
       become: true
       ansible.builtin.systemd_service:
         name: "{{ disks_systemd_filename }}"
         state: started
-      when:
-        - disks_systemd_install_output is not changed
-        - disks_disk_config.state == 'mounted'
+        daemon_reload: true
 
     - name: Disk is remounted
-      become: true
-      ansible.builtin.systemd_service:
-        state: restarted
-        name: "{{ disks_systemd_filename }}"
       when:
         - disks_systemd_install_output is changed
         - disks_disk_config.state == 'mounted'
         - disks_allow_remount | default(true)
+      become: true
+      ansible.builtin.systemd_service:
+        state: restarted
+        name: "{{ disks_systemd_filename }}"
 
 - name: Unmount disk
-  become: true
-  ansible.builtin.systemd_service:
-    name: "{{ disks_systemd_filename }}"
-    state: stopped
-  when:
-    - disks_systemd_filename in ansible_facts.services
-    - disks_disk_config.state == "absent" or disks_disk_config.state == "unmounted"
-
-- name: Remove systemd unit
-  when: disks_disk_config.state == "absent"
-  become: true
-  ansible.builtin.file:
-    path: /etc/systemd/system/{{ disks_systemd_filename }}
-    state: absent
-  notify:
-    - Reload systemd service files
+  when: disks_disk_config.state in ["absent", "unmounted"]
+  vars:
+    __disks_unmount_mount_path: "{{ disks_disk_config.mount_path }}"
+    __disks_unmount_remove_config: "{{ disks_disk_config.state == 'absent' }}"
+    __disks_unmount_mount_type: "systemd"
+    __disks_unmount_systemd_unit: "{{ disks_systemd_filename }}"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_disk.yml"
