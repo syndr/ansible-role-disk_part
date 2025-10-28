@@ -66,9 +66,6 @@
           disks_disk_config.device.startswith('/dev/disk/by-id/')
         )
       }}
-    # Always use the original device path for filesystem operations
-    __disks_filesystem_device: >-
-      {{ disks_disk_config.device }}
   block:
     - name: Pre-format device ID discovery (for blank disks)
       when:
@@ -83,7 +80,7 @@
     - name: Configure filesystem for {{ disks_disk_config.device }}
       become: true
       community.general.filesystem:
-        dev: "{{ __disks_filesystem_device }}"
+        dev: "{{ disks_disk_config.device }}"
         fstype: "{{ disks_disk_config.format }}"
         force: "{{ disks_disk_config.force }}"
         opts: "{{ disks_disk_config.format_options }}"

@@ -52,7 +52,7 @@ flowchart TD
     MountSel --> MType{mount_type}
     MType -->|systemd| Sys[mount_systemd.yml unit ops]
     MType -->|fstab| Fstab[mount_fstab.yml posix.mount]
-    Sys --> Dup[unmount_disks.yml duplicates]
+    Sys --> Dup[unmount_duplicates.yml duplicates]
     Fstab --> Dup
     Dup --> FinalFact[Append fact]
   end

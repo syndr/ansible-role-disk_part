@@ -23,153 +23,6 @@
       ansible.builtin.set_fact:
         ansible_python_interpreter: /usr/local/bin/python3.10
 
-- name: Test LVM multiple devices with same VG
-  hosts: molecule
-  vars:
-    ansible_user: molecule_runner
-  tasks:
-    - name: Execute LVM over filesystem validation test
-      tags: always
-      ansible.builtin.include_tasks: side_effects/test_lvm_over_nonlvm.yml
-
-    - name: Execute clean device LVM validation test
-      tags: always
-      ansible.builtin.include_tasks: side_effects/test_lvm_over_lvm.yml
-
-- name: Test non-LVM validation against existing data
-  hosts: molecule
-  vars:
-    ansible_user: molecule_runner
-  tasks:
-    - name: Execute non-LVM over LVM validation test
-      tags: always
-      ansible.builtin.include_tasks: side_effects/test_nonlvm_over_lvm.yml
-
-    - name: Execute non-LVM over filesystem validation test
-      tags: always
-      ansible.builtin.include_tasks: side_effects/test_nonlvm_over_filesystem.yml
-
-- name: Test mount point changes
-  hosts: molecule
-  vars:
-    ansible_user: molecule_runner
-  tasks:
-    - name: Execute mount point change test
-      tags: 
-        - always
-        - mount_point_change
-      ansible.builtin.include_tasks: side_effects/test_mount_point_change.yml
-
-    - name: Execute data integrity verification
-      tags: always
-      vars:
-        ci_companion_cubes:
-          - /mnt/fstab_test_new/companion_cube.txt
-          - /mnt/lvm_test_new/companion_cube.txt
-      ansible.builtin.include_tasks: checks/verify_data_integrity.yml
-
-- name: Test mount_path_type variations
-  hosts: molecule
-  vars:
-    ansible_user: molecule_runner
-  tasks:
-    - name: Load system facts for additional disk discovery
-      ansible.builtin.setup:
-        gather_subset:
-          - "!all"
-          - "!min"
-          - local
-
-    - name: Test mount_path_type uuid mode (on formatted disk)
-      vars:
-        disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/uuid_test
-            mount_type: systemd
-            mount_path_type: uuid
-            state: mounted
-      ansible.builtin.include_role:
-        name: disk_part
-
-    - name: Test mount_path_type id mode
-      vars:
-        disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.id_disk }}"
-            format: xfs
-            lvm: false
-            mount_path: /mnt/id_test
-            mount_type: systemd
-            mount_path_type: id
-            state: mounted
-      ansible.builtin.include_role:
-        name: disk_part
-
-    - name: Verify mount_path_type test mounts are working
-      ansible.builtin.setup:
-        gather_subset:
-          - "!all"
-          - mounts
-
-    - name: Create test files in additional mount points
-      become: true
-      loop:
-        - /mnt/uuid_test/uuid_test.txt
-        - /mnt/id_test/id_test.txt
-      ansible.builtin.copy:
-        content: |
-          Mount path type test file
-          Created at: {{ ansible_facts.date_time.iso8601 }}
-          Mount point: {{ item | dirname }}
-        dest: "{{ item }}"
-        mode: '0644'
-
-    - name: Clean up additional test mounts for verify phase
-      vars:
-        disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.uuid_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/uuid_test
-            mount_type: systemd
-            mount_path_type: uuid
-            state: absent
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.id_disk }}"
-            format: xfs
-            lvm: false
-            mount_path: /mnt/id_test
-            mount_type: systemd
-            mount_path_type: id
-            state: absent
-      ansible.builtin.include_role:
-        name: disk_part
-
-- name: Re-run with default configuration (match expected for 'verify' phase)
-  hosts: molecule
-  vars:
-    ansible_user: molecule_runner
-  tasks:
-    - name: Load disk_part role with default configuration
-      tags: always
-      vars:
-        # This should match config in converge.yml
-        disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/fstab_test
-            mount_type: fstab
-            mount_path_type: auto
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
-            format: xfs
-            lvm: true
-            mount_path: /mnt/lvm_test
-            mount_type: systemd
-            mount_path_type: auto
-      ansible.builtin.include_role:
-        name: disk_part
-
 - name: Test mount_path_type auto preservation (idempotency)
   hosts: molecule
   vars:
@@ -180,3 +33,109 @@
         - always
         - auto_path_preservation
       ansible.builtin.include_tasks: side_effects/test_auto_path_preservation.yml
+
+- name: Test disks_allow_remount flag
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Execute remount control test
+      tags:
+        - always
+        - remount_control
+      ansible.builtin.include_tasks: side_effects/test_remount_control.yml
+
+- name: Test LVM multiple devices with same VG
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: LVM validation tests
+      tags:
+        - always
+        - lvm_validation
+      block:
+        - name: Execute LVM over filesystem validation test
+          tags: lvm_over_nonlvm
+          ansible.builtin.include_tasks: side_effects/test_lvm_over_nonlvm.yml
+
+        - name: Execute clean device LVM validation test
+          tags: lvm_over_lvm
+          ansible.builtin.include_tasks: side_effects/test_lvm_over_lvm.yml
+
+- name: Test non-LVM validation against existing data
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Non-LVM validation tests
+      tags:
+        - always
+        - nonlvm_validation
+      block:
+        - name: Execute non-LVM over LVM validation test
+          tags: nonlvm_over_lvm
+          ansible.builtin.include_tasks: side_effects/test_nonlvm_over_lvm.yml
+
+        - name: Execute non-LVM over filesystem validation test
+          tags: nonlvm_over_filesystem
+          ansible.builtin.include_tasks: side_effects/test_nonlvm_over_filesystem.yml
+
+- name: Test mount point changes
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Mount point change tests
+      tags:
+        - always
+        - mount_point_change
+      block:
+        - name: Execute mount point change test
+          ansible.builtin.include_tasks: side_effects/test_mount_point_change.yml
+
+        - name: Execute data integrity verification
+          tags: data_integrity
+          vars:
+            ci_companion_cubes:
+              - /mnt/fstab_test_new/companion_cube.txt
+              - /mnt/lvm_test_new/companion_cube.txt
+          ansible.builtin.include_tasks: checks/verify_data_integrity.yml
+
+- name: Test state absent functionality
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Execute absent state test
+      tags:
+        - always
+        - absent_state
+      ansible.builtin.include_tasks: side_effects/test_absent_state.yml
+
+- name: Re-run with default configuration (match expected for 'verify' phase)
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Load disk_part role with default configuration
+      tags:
+        - always
+        - restore_config
+      vars:
+        # This should match config in converge.yml
+        disks_partitions:
+          - "{{ ci_fstab_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.fstab_disk
+            }) }}"
+          - "{{ ci_lvm_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.lvm_disk
+            }) }}"
+          - "{{ ci_uuid_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk
+            }) }}"
+          - "{{ ci_id_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.id_disk
+            }) }}"
+      ansible.builtin.include_role:
+        name: disk_part

@@ -1,0 +1,119 @@
+---
+# Unified unmount logic for systemd, fstab, and orphaned mounts
+#
+# Required input parameters:
+#   __disks_unmount_mount_path: "/mnt/data"  # Path to unmount
+#
+# Optional input parameters:
+#   __disks_unmount_remove_config: true/false  # Remove config files (default: false)
+#   __disks_unmount_mount_type: "auto|systemd|fstab"  # Mount type (default: "auto" - auto-detect)
+#   __disks_unmount_systemd_unit: "mnt-data.mount"  # Systemd unit name (auto-generated if not provided)
+
+- name: Unmount a disk from the system
+  vars:
+    __disks_runtime_unmount_remove_config: "{{ __disks_unmount_remove_config | default(false, true) }}"
+    __disks_runtime_unmount_mount_type: "{{ __disks_unmount_mount_type | default('auto', true) }}"
+  block:
+    # Phase 1: Detection (if mount_type is "auto")
+    - name: Auto-detect mount type
+      when: __disks_runtime_unmount_mount_type == "auto"
+      block:
+        - name: Generate systemd unit name from mount path
+          when: __disks_unmount_systemd_unit is not defined
+          ansible.builtin.command:
+            cmd: 'systemd-escape -p --suffix=mount "{{ __disks_unmount_mount_path }}"'
+          register: __disks_runtime_unmount_systemd_unit_generated
+          changed_when: false
+
+        - name: Check if systemd unit file exists
+          ansible.builtin.stat:
+            path: /etc/systemd/system/{{ __disks_unmount_systemd_unit
+              | default(__disks_runtime_unmount_systemd_unit_generated.stdout | trim) }}
+          register: __disks_runtime_unmount_systemd_unit_stat
+
+        - name: Check if mount is in fstab
+          become: true
+          ansible.builtin.command:
+            cmd: grep -q "{{ __disks_unmount_mount_path }}" /etc/fstab
+          register: __disks_runtime_unmount_fstab_check
+          changed_when: false
+          failed_when: false
+
+    # Phases 2 & 3: Execute unmount and cleanup with computed values
+    - name: Execute unmount and cleanup
+      vars:
+        __disks_runtime_unmount_systemd_unit: >-
+          {{
+            __disks_unmount_systemd_unit
+            | default(__disks_runtime_unmount_systemd_unit_generated.stdout
+            | default('') | trim)
+          }}
+        __disks_runtime_unmount_mount_type: >-
+          {%- if __disks_unmount_mount_type | default('auto', true) == 'auto' -%}
+            {%- if __disks_runtime_unmount_systemd_unit_stat.stat.exists | default(false) -%}systemd
+            {%- elif (__disks_runtime_unmount_fstab_check.rc | default(1)) == 0 -%}fstab
+            {%- else -%}orphaned{%- endif -%}
+          {%- else -%}
+            {{ __disks_unmount_mount_type | default('auto', true) }}
+          {%- endif -%}
+      block:
+        # Phase 2: Unmount
+        - name: Unmount systemd-managed mount
+          when: __disks_runtime_unmount_mount_type == "systemd"
+          block:
+            - name: Stop systemd mount unit
+              become: true
+              ansible.builtin.systemd_service:
+                name: "{{ __disks_runtime_unmount_systemd_unit }}"
+                state: stopped
+              register: __disks_runtime_unmount_systemd_result
+
+        - name: Unmount fstab-managed mount
+          when: __disks_runtime_unmount_mount_type == "fstab"
+          block:
+            - name: Unmount via ansible.posix.mount
+              become: true
+              ansible.posix.mount:
+                path: "{{ __disks_unmount_mount_path }}"
+                state: unmounted
+              register: __disks_runtime_unmount_fstab_result
+
+        - name: Check if mount still exists after primary unmount
+          when: __disks_runtime_unmount_mount_type in ["systemd", "fstab", "orphaned"]
+          ansible.builtin.setup:
+            gather_subset:
+              - "!all"
+              - mounts
+
+        - name: Fallback unmount with umount command
+          when:
+            - __disks_unmount_mount_path in (ansible_facts.mounts | map(attribute='mount') | list)
+          become: true
+          ansible.builtin.command:
+            cmd: umount "{{ __disks_unmount_mount_path }}"
+          register: __disks_runtime_unmount_fallback_result
+
+        # Phase 3: Remove Configuration
+        - name: Remove systemd configuration
+          when:
+            - __disks_runtime_unmount_remove_config | bool
+            - __disks_runtime_unmount_mount_type == "systemd"
+          block:
+            - name: Remove systemd mount unit file
+              become: true
+              ansible.builtin.file:
+                path: /etc/systemd/system/{{ __disks_runtime_unmount_systemd_unit }}
+                state: absent
+              notify:
+                - Reload systemd service files
+
+        - name: Remove fstab configuration
+          when:
+            - __disks_runtime_unmount_remove_config | bool
+            - __disks_runtime_unmount_mount_type == "fstab"
+          block:
+            - name: Remove fstab entry
+              become: true
+              ansible.posix.mount:
+                path: "{{ __disks_unmount_mount_path }}"
+                state: absent_from_fstab

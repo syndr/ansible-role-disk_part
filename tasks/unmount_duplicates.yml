@@ -1,0 +1,43 @@
+---
+# Look for duplicate mounts and unmount them if they exist
+# Remove mount configuration (systemd/fstab) for volume being unmounted
+
+- name: Search for duplicate disk mounts
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/find_duplicate_mounts.yml"
+
+- name: There be duplicate mounts! 🔪
+  when:
+    - __disks_duplicate_mounts | length > 0
+  block:
+    - name: Duplicate device mounts detected
+      ansible.builtin.assert:
+        that:
+          - disks_allow_mountpoint_changes | default(true) is true
+        fail_msg: |
+          ❌ Duplicate mounts detected for device {{ __disks_device_canonical }}:
+          {% for mount in __disks_duplicate_mounts %}
+          • Mounted at: {{ mount }}
+          {% endfor %}
+          
+          However, 'disks_allow_mountpoint_changes' is disabled, so automatic unmounting cannot proceed.
+          Please resolve these duplicate mounts manually.
+        success_msg: |
+          ⚠️ Duplicate mounts detected for device {{ __disks_device_canonical }}:
+          {% for mount in __disks_duplicate_mounts %}
+          • Mounted at: {{ mount }}
+          {% endfor %}
+          
+          Proceeding to unmount duplicate mount points as 'disks_allow_mountpoint_changes' is enabled.
+
+    - name: Unmount and remove duplicate mounts
+      loop: "{{ __disks_duplicate_mounts }}"
+      loop_control:
+        loop_var: __disks_duplicate_mount
+      vars:
+        __disks_unmount_mount_path: "{{ __disks_duplicate_mount }}"
+        __disks_unmount_remove_config: true
+        __disks_unmount_mount_type: "auto"
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/unmount_disk.yml"
+
+    - name: Re-evaluate duplicate mount status
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/find_duplicate_mounts.yml"

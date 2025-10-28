@@ -8,11 +8,11 @@
     - name: Attempt to create non-LVM filesystem over existing non-LVM device (should fail)
       vars:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
-            format: xfs
-            mount_path: /mnt/dangerous_test2
-            mount_type: fstab
-            lvm: false
+          - "{{ ci_fstab_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.fstab_disk,
+              'format': 'xfs',
+              'mount_path': '/mnt/dangerous_test2'
+            }) }}"
       ansible.builtin.include_role:
         name: disk_part
 

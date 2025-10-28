@@ -8,6 +8,8 @@
     ci_companion_cubes:
       - /mnt/fstab_test/companion_cube.txt
       - /mnt/lvm_test/companion_cube.txt
+      - /mnt/uuid_test/companion_cube.txt
+      - /mnt/id_test/companion_cube.txt
   tasks:
     - name: Load system facts
       ansible.builtin.setup:
@@ -27,16 +29,18 @@
     - name: Load discovered disk configuration
       ansible.builtin.set_fact:
         disks_partitions:
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.fstab_disk }}"
-            format: ext4
-            lvm: false
-            mount_path: /mnt/fstab_test
-            mount_type: fstab
-          - device: "{{ ansible_facts.ansible_local.molecule_disks.lvm_disk }}"
-            format: xfs
-            lvm: true
-            mount_path: /mnt/lvm_test
-            mount_type: systemd
+          - "{{ ci_fstab_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.fstab_disk
+            }) }}"
+          - "{{ ci_lvm_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.lvm_disk
+            }) }}"
+          - "{{ ci_uuid_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.uuid_disk
+            }) }}"
+          - "{{ ci_id_cfg | combine({
+              'device': ansible_facts.ansible_local.molecule_disks.id_disk
+            }) }}"
 
     - name: Gather current mount information
       ansible.builtin.setup:
@@ -54,7 +58,7 @@
         label: "{{ disk_config.mount_path | default('no mount path') }}"
       vars:
         # Find matching mount from ansible facts
-        matching_mount: "{{ ansible_mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
+        matching_mount: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
       ansible.builtin.assert:
         that:
           - matching_mount | length > 0
@@ -254,5 +258,8 @@
           {% endif %}
           
           Total active mounts: {{ ansible_facts.mounts | selectattr('mount', 'match', '^/mnt/.*') | list | length }}
+          {% for mount in ansible_facts.mounts | selectattr('mount', 'match', '^/mnt/.*') | list %}
+            - {{ mount.mount }} mounted on {{ mount.device }} ({{ mount.fstype }})
+          {% endfor %}
           Companion cubes verified: {{ ci_companion_cubes | default([]) | length }}
           ============================================
