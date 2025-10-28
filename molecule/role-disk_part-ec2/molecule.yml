@@ -41,46 +41,8 @@ platforms:
           volume_type: gp3
           volume_size: 1
           delete_on_termination: true
-    hostvars:
-      org: molecule
-      env: ci
-      # Device paths are dynamically discovered in prepare.yml
-      # and stored in /etc/ansible/facts.d/molecule_disks.fact
+    hostvars: {}
 
-      # Standard test configurations for consistent test execution
-      ci_lvm_cfg:
-        format: xfs
-        lvm: true
-        lvm_vg_name: data
-        lvm_lv_name: data
-        mount_path: /mnt/lvm_test
-        mount_type: systemd
-        mount_path_type: auto
-        description: "Disk managed by Ansible"
-
-      ci_fstab_cfg:
-        format: ext4
-        lvm: false
-        mount_path: /mnt/fstab_test
-        mount_type: fstab
-        mount_path_type: auto
-        mount_options: defaults
-
-      ci_uuid_cfg:
-        format: ext4
-        lvm: false
-        mount_path: /mnt/uuid_test
-        mount_type: systemd
-        mount_path_type: uuid
-        state: mounted
-
-      ci_id_cfg:
-        format: xfs
-        lvm: false
-        mount_path: /mnt/id_test
-        mount_type: systemd
-        mount_path_type: id
-        state: mounted
   - name: role-disk_part-ec2-rocky10
     type: ec2
     image: ami-03de42ec590769b4e  # Rocky Linux 10 (Official) - x86_64
@@ -115,49 +77,48 @@ platforms:
           volume_type: gp3
           volume_size: 1
           delete_on_termination: true
-    hostvars:
-      org: molecule
-      env: ci
-      # Device paths are dynamically discovered in prepare.yml
-      # and stored in /etc/ansible/facts.d/molecule_disks.fact
-
-      # Standard test configurations for consistent test execution
-      ci_lvm_cfg:
-        format: xfs
-        lvm: true
-        lvm_vg_name: data
-        lvm_lv_name: data
-        mount_path: /mnt/lvm_test
-        mount_type: systemd
-        mount_path_type: auto
-        description: "Disk managed by Ansible"
-
-      ci_fstab_cfg:
-        format: ext4
-        lvm: false
-        mount_path: /mnt/fstab_test
-        mount_type: fstab
-        mount_path_type: auto
-        mount_options: defaults
-
-      ci_uuid_cfg:
-        format: ext4
-        lvm: false
-        mount_path: /mnt/uuid_test
-        mount_type: systemd
-        mount_path_type: uuid
-        state: mounted
-
-      ci_id_cfg:
-        format: xfs
-        lvm: false
-        mount_path: /mnt/id_test
-        mount_type: systemd
-        mount_path_type: id
-        state: mounted
+    hostvars: {}
 provisioner:
   name: ansible
   log: True
+  inventory:
+    group_vars:
+      molecule:
+        # Device paths are dynamically discovered in prepare.yml
+        # and stored in /etc/ansible/facts.d/molecule_disks.fact
+        ci_lvm_cfg:
+          format: xfs
+          lvm: true
+          lvm_vg_name: data
+          lvm_lv_name: data
+          mount_path: /mnt/lvm_test
+          mount_type: systemd
+          mount_path_type: auto
+          description: "Disk managed by Ansible"
+
+        ci_fstab_cfg:
+          format: ext4
+          lvm: false
+          mount_path: /mnt/fstab_test
+          mount_type: fstab
+          mount_path_type: auto
+          mount_options: defaults
+
+        ci_uuid_cfg:
+          format: ext4
+          lvm: false
+          mount_path: /mnt/uuid_test
+          mount_type: systemd
+          mount_path_type: uuid
+          state: mounted
+
+        ci_id_cfg:
+          format: xfs
+          lvm: false
+          mount_path: /mnt/id_test
+          mount_type: systemd
+          mount_path_type: id
+          state: mounted
   playbooks:
     create: ../resources/create.yml
     prepare: ../resources/prepare.yml

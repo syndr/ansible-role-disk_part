@@ -45,7 +45,7 @@
           ❌ Duplicate mount detection failed successfully!
           Found {{ __ci_duplicate_mounts | length }} device(s) mounted at multiple locations:
           {% for device in __ci_duplicate_mounts %}
-          • {{ device }} → {{ ansible_mounts | selectattr('device', 'equalto', device) | map(attribute='mount') | join(', ') }}
+          • {{ device }} → {{ ansible_facts.mounts | selectattr('device', 'equalto', device) | map(attribute='mount') | join(', ') }}
           {% endfor %}
           
           Block devices should not be mounted at multiple locations simultaneously.

@@ -58,7 +58,7 @@
         label: "{{ disk_config.mount_path | default('no mount path') }}"
       vars:
         # Find matching mount from ansible facts
-        matching_mount: "{{ ansible_mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
+        matching_mount: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', disk_config.mount_path) | first | default({}) }}"
       ansible.builtin.assert:
         that:
           - matching_mount | length > 0
