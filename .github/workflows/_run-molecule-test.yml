@@ -27,10 +27,6 @@ on:
         required: false
         type: number
         default: 360
-      potato-username:
-        required: false
-        type: string
-        default: ''
       vault-identity:
         required: false
         type: string
